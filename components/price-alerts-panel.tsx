@@ -750,14 +750,20 @@ export function PriceAlertsPanel({
                       <p className="font-semibold text-foreground">{alert.companySymbol}</p>
                       <p className="text-xs text-muted-foreground">{alert.companyName}</p>
                     </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="border-border bg-card text-[10px]">
+                    <TableCell className="whitespace-nowrap">
+                      <Badge
+                        variant="outline"
+                        className="whitespace-nowrap border-border bg-card text-[10px]"
+                      >
                         {alert.direction === "above" ? "Above" : "Below"} TZS{" "}
                         {alert.targetPrice.toLocaleString()}
                       </Badge>
                     </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={cn("text-[10px]", statusBadgeClass(status))}>
+                    <TableCell className="whitespace-nowrap">
+                      <Badge
+                        variant="outline"
+                        className={cn("whitespace-nowrap text-[10px]", statusBadgeClass(status))}
+                      >
                         {formatStatus(status)}
                       </Badge>
                     </TableCell>
@@ -790,11 +796,17 @@ export function PriceAlertsPanel({
                         <span className="text-sm font-semibold text-foreground">
                           {alert.companySymbol}
                         </span>
-                        <Badge variant="outline" className="border-border bg-card text-[10px]">
+                        <Badge
+                          variant="outline"
+                          className="whitespace-nowrap border-border bg-card text-[10px]"
+                        >
                           {alert.direction === "above" ? "Above" : "Below"} TZS{" "}
                           {alert.targetPrice.toLocaleString()}
                         </Badge>
-                        <Badge variant="outline" className={cn("text-[10px]", statusBadgeClass(status))}>
+                        <Badge
+                          variant="outline"
+                          className={cn("whitespace-nowrap text-[10px]", statusBadgeClass(status))}
+                        >
                           {formatStatus(status)}
                         </Badge>
                       </div>
