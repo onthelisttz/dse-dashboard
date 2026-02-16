@@ -425,7 +425,6 @@ export function PriceChart({
     if (years > 0 && years <= 15) {
       onDaysChange(years * 365)
     }
-    setCustomYears("")
   }, [customYears, onDaysChange])
 
   return (
