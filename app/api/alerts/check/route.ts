@@ -20,6 +20,14 @@ function isExpired(expiresAt: string | null) {
   return value <= Date.now()
 }
 
+function extractBearerToken(authorizationHeader: string | null) {
+  if (!authorizationHeader) return null
+  const [scheme, token] = authorizationHeader.split(" ")
+  if (!scheme || !token) return null
+  if (scheme.toLowerCase() !== "bearer") return null
+  return token
+}
+
 export async function GET(request: NextRequest) {
   try {
     const cronSecret = process.env.CRON_SECRET || process.env.ALERT_CRON_SECRET
@@ -30,8 +38,12 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const authHeader = request.headers.get("authorization")
-    if (authHeader !== `Bearer ${cronSecret}`) {
+    const bearerToken = extractBearerToken(request.headers.get("authorization"))
+    const cronHeaderToken = request.headers.get("x-cron-secret")
+    const querySecret = request.nextUrl.searchParams.get("secret")
+
+    const providedSecret = bearerToken ?? cronHeaderToken ?? querySecret
+    if (providedSecret !== cronSecret) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 

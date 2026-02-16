@@ -37,9 +37,36 @@ Use the generated keys for:
 
 1. Add all env vars in Vercel project settings.
 2. Ensure `CRON_SECRET` is set (used by `/api/alerts/check`).
-3. Deploy. Cron is already configured in `vercel.json` to run every 5 minutes.
+3. Deploy.
 
-## 5) Runtime behavior
+## 5) Scheduler setup (cron-job.org, free)
+
+Vercel Hobby allows only daily cron. For 5-minute alert checks, use an external scheduler.
+
+1. Create a job in `cron-job.org`.
+2. URL:
+   - Preferred (header auth): `https://your-domain.com/api/alerts/check`
+   - Fallback (query auth): `https://your-domain.com/api/alerts/check?secret=YOUR_CRON_SECRET`
+3. Method: `GET`
+4. Schedule: every `5` minutes (`*/5 * * * *`).
+5. If using header auth, set one of:
+   - `Authorization: Bearer YOUR_CRON_SECRET`
+   - `x-cron-secret: YOUR_CRON_SECRET`
+6. Save and run a manual test from cron-job.org once.
+
+Expected successful response shape:
+
+```json
+{
+  "scanned": 12,
+  "triggered": 1,
+  "deactivated": 1,
+  "sentEmails": 1,
+  "sentPush": 1
+}
+```
+
+## 6) Runtime behavior
 
 - Dashboard route requires login.
 - Users can add/drag/delete chart alerts.
