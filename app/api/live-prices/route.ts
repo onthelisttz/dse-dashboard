@@ -1,14 +1,60 @@
 import { NextResponse } from "next/server"
+import { fetchJsonWithTimeout } from "@/lib/server-fetch"
+
+let cachedLivePrices: unknown = null
 
 export async function GET() {
   try {
-    const res = await fetch("https://dse.co.tz/api/get/live/market/prices", {
+    const result = await fetchJsonWithTimeout<unknown>(
+      "https://dse.co.tz/api/get/live/market/prices",
+      {
       next: { revalidate: 30 },
+      timeoutMs: 7000,
+      }
+    )
+
+    if (!result.ok || !result.data) {
+      if (cachedLivePrices) {
+        return NextResponse.json(cachedLivePrices, {
+          status: 200,
+          headers: {
+            "x-dse-stale": "1",
+            "cache-control": "no-store",
+          },
+        })
+      }
+      return NextResponse.json({ success: false, data: [] }, {
+        status: 200,
+        headers: {
+          "x-dse-stale": "1",
+          "cache-control": "no-store",
+        },
+      })
+    }
+
+    cachedLivePrices = result.data
+    return NextResponse.json(result.data, {
+      status: 200,
+      headers: {
+        "x-dse-stale": "0",
+      },
     })
-    if (!res.ok) throw new Error("Failed to fetch live prices")
-    const data = await res.json()
-    return NextResponse.json(data)
   } catch {
-    return NextResponse.json({ error: "Failed to fetch live prices" }, { status: 500 })
+    if (cachedLivePrices) {
+      return NextResponse.json(cachedLivePrices, {
+        status: 200,
+        headers: {
+          "x-dse-stale": "1",
+          "cache-control": "no-store",
+        },
+      })
+    }
+    return NextResponse.json({ success: false, data: [] }, {
+      status: 200,
+      headers: {
+        "x-dse-stale": "1",
+        "cache-control": "no-store",
+      },
+    })
   }
 }

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useMarketData, useStatistics, useMarketMeta } from "@/lib/use-dse-data"
 import { StatCards } from "@/components/stat-cards"
 import { CompanySelector } from "@/components/company-selector"
@@ -9,30 +9,62 @@ import { CompanyComparison } from "@/components/company-comparison"
 import { MarketTable } from "@/components/market-table"
 import { OrderBook } from "@/components/order-book"
 import { TopPerformers } from "@/components/top-performers"
+import { PriceAlertsPanel } from "@/components/price-alerts-panel"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { LogoMark } from "@/components/logo-mark"
+import { ProfileMenu } from "@/components/profile-menu"
 import { Badge } from "@/components/ui/badge"
 import { RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { usePriceAlerts } from "@/lib/use-price-alerts"
 
-export function Dashboard() {
+interface DashboardUser {
+  id: string
+  name: string
+  email: string
+  avatarUrl?: string | null
+}
+
+interface DashboardProps {
+  user: DashboardUser
+}
+
+export function Dashboard({ user }: DashboardProps) {
   const { data: marketData, isLoading: marketLoading, mutate } = useMarketData()
   const { data: marketMeta } = useMarketMeta()
+  const {
+    alerts,
+    isLoading: alertsLoading,
+    createAlert,
+    updateAlert,
+    deleteAlert,
+  } = usePriceAlerts()
   const [selectedCompanyId, setSelectedCompanyId] = useState<number>(12) // TBL default
   const [timeframe, setTimeframe] = useState<"daily" | "weekly">("daily")
   const [days, setDays] = useState<number>(365)
+  const [showAlertsOnChart, setShowAlertsOnChart] = useState(false)
+  const companies = marketData ?? []
+
+  useEffect(() => {
+    if (companies.length === 0) return
+    const exists = companies.some((item) => item.company.id === selectedCompanyId)
+    if (!exists) {
+      setSelectedCompanyId(companies[0].company.id)
+    }
+  }, [companies, selectedCompanyId])
 
   const selectedCompany = useMemo(
-    () => marketData?.find((item) => item.company.id === selectedCompanyId) ?? null,
-    [marketData, selectedCompanyId]
+    () => companies.find((item) => item.company.id === selectedCompanyId) ?? null,
+    [companies, selectedCompanyId]
   )
 
-  const companySymbol = selectedCompany?.company.symbol ?? "TBL"
+  const companySymbol = selectedCompany?.company.symbol ?? companies[0]?.company.symbol ?? "TBL"
+  const companyName = selectedCompany?.company.name ?? companies[0]?.company.name ?? companySymbol
 
   const { data: statsData, isLoading: statsLoading } = useStatistics(
     selectedCompanyId,
     days,
-    selectedCompany?.company.symbol
+    companySymbol
   )
 
   const marketOpen = marketMeta?.marketOpen ?? true
@@ -71,7 +103,7 @@ export function Dashboard() {
         </div>
         <div className="flex items-center gap-3">
           <CompanySelector
-            companies={marketData ?? []}
+            companies={companies}
             selectedId={selectedCompanyId}
             onSelect={setSelectedCompanyId}
           />
@@ -85,6 +117,7 @@ export function Dashboard() {
             <span className="sr-only">Refresh data</span>
           </Button>
           <ThemeToggle />
+          <ProfileMenu name={user.name} email={user.email} avatarUrl={user.avatarUrl} />
         </div>
       </header>
 
@@ -123,19 +156,26 @@ export function Dashboard() {
         <StatCards selectedCompany={selectedCompany} />
 
         {/* Chart + Order Book */}
-        <div className="grid gap-4 lg:grid-cols-3">
+        <div id="price-chart-section" className="grid gap-4 lg:grid-cols-3">
           <div className="lg:col-span-2">
             <PriceChart
               data={statsData}
               isLoading={statsLoading}
-              companies={marketData ?? []}
+              companies={companies}
               selectedCompanyId={selectedCompanyId}
               onSelectCompany={setSelectedCompanyId}
               companySymbol={companySymbol}
+              companyName={companyName}
               timeframe={timeframe}
               onTimeframeChange={setTimeframe}
               days={days}
               onDaysChange={setDays}
+              alerts={alerts}
+              showAlertsOnChart={showAlertsOnChart}
+              onShowAlertsOnChartChange={setShowAlertsOnChart}
+              onCreateAlert={createAlert}
+              onUpdateAlert={updateAlert}
+              onDeleteAlert={deleteAlert}
             />
           </div>
           <div>
@@ -167,6 +207,16 @@ export function Dashboard() {
           isLoading={marketLoading}
           selectedId={selectedCompanyId}
           onSelect={setSelectedCompanyId}
+        />
+
+        {/* Price Alerts */}
+        <PriceAlertsPanel
+          alerts={alerts}
+          onSelectCompany={setSelectedCompanyId}
+          onRevealChartAlerts={() => setShowAlertsOnChart(true)}
+          onUpdateAlert={updateAlert}
+          onDeleteAlert={deleteAlert}
+          isLoading={alertsLoading}
         />
       </main>
 

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { fetchJsonWithTimeout } from "@/lib/server-fetch"
 
 interface OverviewRow {
   company: string
@@ -27,6 +28,43 @@ interface HistoryResponse {
   data?: HistoryRow[]
 }
 
+interface BaseMarketItem {
+  id?: number
+  company?: {
+    id?: number
+    uid?: string
+    name?: string
+    symbol?: string
+    securityId?: string
+    capSize?: number
+  }
+  security?: {
+    id?: number
+    symbol?: string
+    securityId?: string
+    securityType?: string
+    securityDesc?: string
+    bestOfferPrice?: number | string
+    bestOfferQuantity?: number | string
+    bestBidPrice?: number | string
+    bestBidQuantity?: number | string
+    totalSharesIssued?: number | string
+  }
+  marketPrice?: number | string
+  openingPrice?: number | string
+  high?: number | string
+  low?: number | string
+  volume?: number | string
+  marketCap?: number | string
+  minLimit?: number | string
+  maxLimit?: number | string
+  bestOfferPrice?: number | string
+  bestOfferQuantity?: number | string
+  bestBidPrice?: number | string
+  bestBidQuantity?: number | string
+  lastTradeDate?: string | null
+}
+
 function toNumber(value: number | string | null | undefined): number {
   if (typeof value === "number") return value
   if (typeof value === "string") {
@@ -37,34 +75,143 @@ function toNumber(value: number | string | null | undefined): number {
   return 0
 }
 
+function normalizeOverviewRows(payload: OverviewResponse | null | undefined): OverviewRow[] {
+  if (!payload || !Array.isArray(payload.gainers_and_losers)) return []
+  return payload.gainers_and_losers
+}
+
+function buildFallbackMarketDataFromOverview(overviewRows: OverviewRow[]) {
+  return overviewRows
+    .map((row, index) => {
+      const symbol = row.company?.trim() || `SYM${index + 1}`
+      const marketPrice = toNumber(row.price)
+      const percentageChange = toNumber(row.change)
+
+      const openEstimate =
+        Number.isFinite(percentageChange) && percentageChange !== -100
+          ? marketPrice / (1 + percentageChange / 100)
+          : marketPrice
+      const openingPrice = Number.isFinite(openEstimate) && openEstimate > 0
+        ? openEstimate
+        : marketPrice
+
+      const high = Math.max(marketPrice, openingPrice)
+      const low = Math.min(
+        ...[marketPrice, openingPrice].filter((value) => Number.isFinite(value) && value > 0)
+      )
+      const normalizedLow = Number.isFinite(low) ? low : marketPrice
+
+      return {
+        id: index + 1,
+        company: {
+          id: index + 1,
+          uid: symbol,
+          name: symbol,
+          symbol,
+          securityId: symbol,
+          capSize: 0,
+        },
+        security: {
+          id: index + 1,
+          symbol,
+          securityId: symbol,
+          securityType: "EQUITY",
+          securityDesc: symbol,
+          bestOfferPrice: marketPrice,
+          bestOfferQuantity: 0,
+          bestBidPrice: marketPrice,
+          bestBidQuantity: 0,
+          totalSharesIssued: 0,
+        },
+        marketPrice,
+        openingPrice,
+        change: percentageChange,
+        percentageChange,
+        changeValue: marketPrice - openingPrice,
+        marketCap: 0,
+        high,
+        low: normalizedLow,
+        volume: toNumber(row.volume),
+        minLimit: marketPrice > 0 ? Math.max(0, Math.round(marketPrice * 0.9)) : 0,
+        maxLimit: marketPrice > 0 ? Math.round(marketPrice * 1.1) : 0,
+        bestOfferPrice: marketPrice,
+        bestOfferQuantity: 0,
+        bestBidPrice: marketPrice,
+        bestBidQuantity: 0,
+        lastTradeDate: null,
+      }
+    })
+    .filter((item) => item.company.symbol.length > 0)
+}
+
 async function fetchLatestHistoryBySymbol(symbol: string): Promise<HistoryRow | null> {
   const url = `https://dse.co.tz/api/get/market/prices/for/range/duration?security_code=${encodeURIComponent(symbol)}&days=7&class=EQUITY`
-  const res = await fetch(url, { next: { revalidate: 60 } })
-  if (!res.ok) return null
+  const result = await fetchJsonWithTimeout<HistoryResponse>(url, {
+    next: { revalidate: 60 },
+    timeoutMs: 7000,
+  })
+  if (!result.ok || !result.data) return null
 
-  const payload = (await res.json()) as HistoryResponse
+  const payload = result.data
   const rows = payload.data ?? []
   if (rows.length === 0) return null
   return rows[rows.length - 1]
 }
 
+let cachedMarketData: any[] | null = null
+
 export async function GET() {
   try {
-    const [baseRes, overviewRes] = await Promise.all([
-      fetch("https://api.dse.co.tz/api/market-data?isBond=false", { next: { revalidate: 60 } }),
-      fetch("https://dse.co.tz/get/gainers/losers", { next: { revalidate: 60 } }),
+    const [baseResult, overviewResult] = await Promise.all([
+      fetchJsonWithTimeout<BaseMarketItem[]>("https://api.dse.co.tz/api/market-data?isBond=false", {
+        next: { revalidate: 60 },
+        timeoutMs: 7000,
+      }),
+      fetchJsonWithTimeout<OverviewResponse>("https://dse.co.tz/get/gainers/losers", {
+        next: { revalidate: 60 },
+        timeoutMs: 7000,
+      }),
     ])
 
-    if (!baseRes.ok) throw new Error("Failed to fetch base market data")
+    const overviewPayload = overviewResult.ok ? overviewResult.data : null
+    const overviewRows = normalizeOverviewRows(overviewPayload)
 
-    const baseData = await baseRes.json()
-    const overviewPayload = overviewRes.ok ? ((await overviewRes.json()) as OverviewResponse) : null
-    const overviewRows = overviewPayload?.gainers_and_losers ?? []
+    if (!baseResult.ok || !Array.isArray(baseResult.data)) {
+      if (overviewRows.length > 0) {
+        const fallbackFromOverview = buildFallbackMarketDataFromOverview(overviewRows)
+        cachedMarketData = fallbackFromOverview
+        return NextResponse.json(fallbackFromOverview, {
+          status: 200,
+          headers: {
+            "x-dse-stale": "1",
+            "cache-control": "no-store",
+          },
+        })
+      }
+      if (cachedMarketData) {
+        return NextResponse.json(cachedMarketData, {
+          status: 200,
+          headers: {
+            "x-dse-stale": "1",
+            "cache-control": "no-store",
+          },
+        })
+      }
+      return NextResponse.json([], {
+        status: 200,
+        headers: {
+          "x-dse-stale": "1",
+          "cache-control": "no-store",
+        },
+      })
+    }
+
+    const baseData = baseResult.data
     const overviewBySymbol = new Map(
       overviewRows.map((row) => [row.company, row] as const)
     )
 
-    const symbols: string[] = (baseData as any[])
+    const symbols: string[] = (baseData as BaseMarketItem[])
       .map((item) => item?.company?.symbol)
       .filter((value): value is string => typeof value === "string" && value.length > 0)
 
@@ -80,7 +227,7 @@ export async function GET() {
       }
     })
 
-    const merged = (baseData as any[]).map((item) => {
+    const merged = (baseData as BaseMarketItem[]).map((item) => {
       const symbol = item?.company?.symbol
       const overview = symbol ? overviewBySymbol.get(symbol) : undefined
       const latest = symbol ? latestHistoryBySymbol.get(symbol) : undefined
@@ -126,8 +273,30 @@ export async function GET() {
       }
     })
 
-    return NextResponse.json(merged)
+    cachedMarketData = merged
+
+    return NextResponse.json(merged, {
+      status: 200,
+      headers: {
+        "x-dse-stale": "0",
+      },
+    })
   } catch {
-    return NextResponse.json({ error: "Failed to fetch market data" }, { status: 500 })
+    if (cachedMarketData) {
+      return NextResponse.json(cachedMarketData, {
+        status: 200,
+        headers: {
+          "x-dse-stale": "1",
+          "cache-control": "no-store",
+        },
+      })
+    }
+    return NextResponse.json([], {
+      status: 200,
+      headers: {
+        "x-dse-stale": "1",
+        "cache-control": "no-store",
+      },
+    })
   }
 }

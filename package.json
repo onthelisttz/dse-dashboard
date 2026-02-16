@@ -40,6 +40,8 @@
     "@radix-ui/react-toggle": "1.1.1",
     "@radix-ui/react-toggle-group": "1.1.1",
     "@radix-ui/react-tooltip": "1.1.6",
+    "@supabase/ssr": "^0.8.0",
+    "@supabase/supabase-js": "^2.95.3",
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -51,6 +53,7 @@
     "lucide-react": "^0.544.0",
     "next": "16.1.6",
     "next-themes": "^0.4.6",
+    "nodemailer": "^8.0.1",
     "postcss-selector-parser": "^7.1.1",
     "react": "19.2.3",
     "react-day-picker": "8.10.1",
@@ -66,13 +69,16 @@
     "use-sync-external-store": "^1.6.0",
     "vaul": "^1.1.2",
     "victory-vendor": "^37.3.6",
+    "web-push": "^3.6.7",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.13",
     "@types/node": "^22",
+    "@types/nodemailer": "^7.0.10",
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
+    "@types/web-push": "^3.6.4",
     "postcss": "^8.5",
     "tailwindcss": "^3.4.17",
     "typescript": "5.7.3"

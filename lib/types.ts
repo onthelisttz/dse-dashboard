@@ -85,3 +85,38 @@ export interface MarketMetaResponse {
   overview: MarketOverviewMeta | null
   updatedAt: string
 }
+
+export type AlertDirection = "above" | "below"
+
+export interface PriceAlert {
+  id: string
+  userId: string
+  companyId: number
+  companySymbol: string
+  companyName: string
+  targetPrice: number
+  direction: AlertDirection
+  comment: string | null
+  createdAt: string
+  updatedAt: string
+  expiresAt: string | null
+  active: boolean
+  triggeredAt: string | null
+  lastCheckedPrice: number | null
+}
+
+export interface CreatePriceAlertInput {
+  companyId: number
+  companySymbol: string
+  companyName: string
+  targetPrice: number
+  comment?: string
+  expiresAt?: string | null
+}
+
+export interface UpdatePriceAlertInput {
+  targetPrice?: number
+  comment?: string | null
+  expiresAt?: string | null
+  active?: boolean
+}
