@@ -251,6 +251,7 @@ export function PriceChart({
   const mainSeriesRef = useRef<MainSeriesApi | null>(null)
   const dragDraftRef = useRef<{ id: string; price: number } | null>(null)
   const overlayRafRef = useRef<number | null>(null)
+  const lastViewportKeyRef = useRef<string>("")
 
   const selectedPeriod = useMemo(() => {
     const preset = PERIOD_OPTIONS.find((opt) => opt.days === days)
@@ -271,6 +272,12 @@ export function PriceChart({
     () => companies.find((company) => company.company.id === selectedCompanyId) ?? null,
     [companies, selectedCompanyId]
   )
+
+  const companyDescription = useMemo(() => {
+    const securityDescription = selectedCompanyMarketData?.security?.securityDesc?.trim()
+    if (securityDescription) return securityDescription
+    return companyName
+  }, [companyName, selectedCompanyMarketData?.security?.securityDesc])
 
   const liveMarketPrice = useMemo(() => {
     const value = toFiniteNumber(selectedCompanyMarketData?.marketPrice)
@@ -823,7 +830,7 @@ export function PriceChart({
           secondsVisible: false,
           rightOffset: 0,
           rightOffsetPixels: 0,
-          fixRightEdge: true,
+          fixRightEdge: false,
           lockVisibleTimeRangeOnResize: true,
         },
         localization: {
@@ -858,7 +865,7 @@ export function PriceChart({
         borderColor: isDark ? "#374151" : "#e5e7eb",
         rightOffset: 0,
         rightOffsetPixels: 0,
-        fixRightEdge: true,
+        fixRightEdge: false,
         lockVisibleTimeRangeOnResize: true,
       },
     })
@@ -909,8 +916,15 @@ export function PriceChart({
     }
 
     if (chartData.length > 0) {
-      chartRef.current.timeScale().fitContent()
-      chartRef.current.timeScale().scrollToRealTime()
+      const firstPointTime = (chartData[0] as { time?: number } | undefined)?.time ?? "none"
+      const lastPointTime =
+        (chartData[chartData.length - 1] as { time?: number } | undefined)?.time ?? "none"
+      const viewportKey = `${selectedCompanyId}:${days}:${timeframe}:${chartType}:${chartData.length}:${firstPointTime}:${lastPointTime}`
+
+      if (lastViewportKeyRef.current !== viewportKey) {
+        chartRef.current.timeScale().fitContent()
+        lastViewportKeyRef.current = viewportKey
+      }
     }
     clampPriceScaleToZero()
     requestOverlaySync()
@@ -930,7 +944,7 @@ export function PriceChart({
     return () => {
       window.removeEventListener("resize", handleResize)
     }
-  }, [chartData, chartType, isDark, isSmallScreen, priceChange, lineColor, clampPriceScaleToZero, nonNegativeAutoscale, upColor, downColor, requestOverlaySync])
+  }, [chartData, chartType, days, isDark, isSmallScreen, priceChange, lineColor, clampPriceScaleToZero, nonNegativeAutoscale, selectedCompanyId, timeframe, upColor, downColor, requestOverlaySync])
 
   useEffect(() => {
     requestOverlaySync()
@@ -1030,7 +1044,7 @@ export function PriceChart({
         borderColor: isDark ? "#374151" : "#e5e7eb",
         rightOffset: 0,
         rightOffsetPixels: 0,
-        fixRightEdge: true,
+        fixRightEdge: false,
         lockVisibleTimeRangeOnResize: true,
       },
       localization: {
@@ -1053,6 +1067,7 @@ export function PriceChart({
         chartRef.current = null
       }
       mainSeriesRef.current = null
+      lastViewportKeyRef.current = ""
     }
   }, [])
 
@@ -1077,13 +1092,9 @@ export function PriceChart({
               <CardTitle className="text-lg font-bold text-foreground">
                 {companySymbol} Price Chart
               </CardTitle>
-              {sortedData.length > 0 && (
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {new Date(sortedData[0]?.trade_date).toLocaleDateString()} -{" "}
-                  {new Date(sortedData[sortedData.length - 1]?.trade_date).toLocaleDateString()}
-                  {" \u00B7 "}{sortedData.length} data points
-                </p>
-              )}
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {companyDescription}
+              </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <CompanySelector

@@ -11,8 +11,8 @@ export const metadata: Metadata = {
   title: 'DSE Market Dashboard',
   description: 'Real-time Dar es Salaam Stock Exchange market data dashboard with interactive charts and live price tracking',
   icons: {
-    icon: '/icon.svg',
-    shortcut: '/icon.svg',
+    icon: '/favicon.ico',
+    shortcut: '/favicon.ico',
     apple: '/icon.svg',
   },
 }
