@@ -418,6 +418,7 @@ export function PriceAlertsPanel({
 
   const dateFilterLabel = formatDateFilterLabel(rangeDate)
   const dateFilterDraftLabel = formatDateFilterLabel(draftRangeDate)
+  const hasDateFilter = Boolean(rangeDate?.from || rangeDate?.to)
   const isDeletingTarget = deleteTarget != null && busyAlertId === deleteTarget.id
 
   const renderActions = (alert: PriceAlert) => {
@@ -620,13 +621,16 @@ export function PriceAlertsPanel({
 
             <div className="md:col-span-1 lg:col-span-3">
               <p className="mb-1 text-[11px] text-muted-foreground">Date Range</p>
-              <div className="flex items-center gap-2">
+              <div className="relative">
                 <Popover open={isDatePickerOpen} onOpenChange={handleDatePickerOpenChange}>
                   <PopoverTrigger asChild>
                     <Button
                       type="button"
                       variant="outline"
-                      className="h-8 flex-1 justify-start border-border bg-card px-2 text-xs"
+                      className={cn(
+                        "h-8 w-full justify-start border-border bg-card px-2 text-xs",
+                        hasDateFilter && "pr-9"
+                      )}
                     >
                       <CalendarDays className="mr-2 h-3.5 w-3.5" />
                       <span className="truncate">{dateFilterLabel}</span>
@@ -669,17 +673,19 @@ export function PriceAlertsPanel({
                     </div>
                   </PopoverContent>
                 </Popover>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={clearDateFilter}
-                  className="h-8 w-8 border-border"
-                  title="Clear date filter"
-                  aria-label="Clear date filter"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
+                {hasDateFilter && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={clearDateFilter}
+                    className="absolute right-1 top-1/2 z-10 h-6 w-6 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    title="Clear date filter"
+                    aria-label="Clear date filter"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                )}
               </div>
             </div>
           </div>

@@ -56,6 +56,14 @@ interface NormalizedStatisticsRow {
 }
 
 const statisticsCache = new Map<string, NormalizedStatisticsRow[]>()
+const symbolToCompanyIdCache = new Map<string, number>()
+
+interface MarketDataSymbolRow {
+  company?: {
+    id?: number | string
+    symbol?: string
+  }
+}
 
 function toNumber(value: number | string | null | undefined): number {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0
@@ -164,17 +172,52 @@ function normalizeDays(daysParam: string): number {
   return Math.min(5475, Math.max(1, Math.round(parsed)))
 }
 
+async function resolveCompanyIdFromSymbol(symbolRaw: string): Promise<number | null> {
+  const symbol = symbolRaw.trim().toUpperCase()
+  if (!symbol) return null
+
+  const cached = symbolToCompanyIdCache.get(symbol)
+  if (cached && cached > 0) return cached
+
+  const result = await fetchJsonWithTimeout<MarketDataSymbolRow[]>(
+    "https://api.dse.co.tz/api/market-data?isBond=false",
+    { next: { revalidate: 60 }, timeoutMs: 9000 }
+  )
+
+  if (!result.ok || !Array.isArray(result.data)) return null
+
+  for (const row of result.data) {
+    const rowSymbol = row.company?.symbol?.trim().toUpperCase()
+    const rowId = toNumber(row.company?.id)
+    if (rowSymbol && rowId > 0) {
+      symbolToCompanyIdCache.set(rowSymbol, rowId)
+    }
+  }
+
+  const resolved = symbolToCompanyIdCache.get(symbol)
+  return resolved && resolved > 0 ? resolved : null
+}
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
-  const companyId = Number(searchParams.get("companyId") ?? "")
+  const requestedCompanyId = Number(searchParams.get("companyId") ?? "")
+  const symbol = (searchParams.get("symbol") ?? "").trim()
   const days = normalizeDays(searchParams.get("days") ?? "365")
+  let companyId = Number.isFinite(requestedCompanyId) && requestedCompanyId > 0 ? requestedCompanyId : 0
+
+  if (companyId <= 0 && symbol) {
+    const resolvedCompanyId = await resolveCompanyIdFromSymbol(symbol)
+    if (resolvedCompanyId && resolvedCompanyId > 0) {
+      companyId = resolvedCompanyId
+    }
+  }
 
   if (!Number.isFinite(companyId) || companyId <= 0) {
     return NextResponse.json([], { status: 200 })
   }
 
   const cacheKey = `${companyId}:${days}`
-  const defaultCompany = String(companyId)
+  const defaultCompany = symbol || String(companyId)
 
   try {
     const result = await fetchJsonWithTimeout<unknown>(
