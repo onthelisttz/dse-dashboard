@@ -12,11 +12,13 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 import { LogOut } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 interface ProfileMenuProps {
   name: string
   email: string
   avatarUrl?: string | null
+  compact?: boolean
 }
 
 function initialsFromName(name: string) {
@@ -30,9 +32,12 @@ function initialsFromName(name: string) {
   return parts.map((part) => part[0]?.toUpperCase() ?? "").join("")
 }
 
-export function ProfileMenu({ name, email, avatarUrl }: ProfileMenuProps) {
+export function ProfileMenu({ name, email, avatarUrl, compact = false }: ProfileMenuProps) {
   const [isSigningOut, setIsSigningOut] = useState(false)
   const router = useRouter()
+  const buttonSizeClass = compact ? "h-8 w-8" : "h-9 w-9"
+  const avatarSizeClass = compact ? "h-6 w-6" : "h-7 w-7"
+  const fallbackTextClass = compact ? "text-[10px]" : "text-[11px]"
 
   const handleSignOut = async () => {
     setIsSigningOut(true)
@@ -49,12 +54,12 @@ export function ProfileMenu({ name, email, avatarUrl }: ProfileMenuProps) {
           type="button"
           variant="outline"
           size="icon"
-          className="h-9 w-9 border-border bg-card"
+          className={cn(buttonSizeClass, "border-border bg-card")}
           aria-label="Open profile menu"
         >
-          <Avatar className="h-7 w-7">
+          <Avatar className={avatarSizeClass}>
             <AvatarImage src={avatarUrl ?? undefined} alt={name} />
-            <AvatarFallback className="text-[11px] font-semibold">
+            <AvatarFallback className={cn("font-semibold", fallbackTextClass)}>
               {initialsFromName(name)}
             </AvatarFallback>
           </Avatar>

@@ -43,6 +43,8 @@ export interface MarketDataItem {
   bestBidQuantity: number
   // Optional date of the latest row used for this item.
   lastTradeDate?: string | null
+  // Optional trade time if provided by upstream market-data feed.
+  tradeTime?: string | null
 }
 
 export interface StatisticsItem {

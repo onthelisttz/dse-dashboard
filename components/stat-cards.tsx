@@ -1,7 +1,7 @@
 "use client"
 
 import { Card, CardContent } from "@/components/ui/card"
-import { cn, formatPercent } from "@/lib/utils"
+import { cn } from "@/lib/utils"
 import type { MarketDataItem } from "@/lib/types"
 import {
   TrendingUp,
@@ -35,15 +35,16 @@ export function StatCards({ selectedCompany }: StatCardsProps) {
   }
 
   const c = selectedCompany
-  const changePercent = c.change ?? 0
-  const isPositive = changePercent > 0
-  const isNegative = changePercent < 0
+  const changeValue = c.changeValue
+  const numericChangeValue = typeof changeValue === "number" ? changeValue : 0
+  const isPositive = numericChangeValue > 0
+  const isNegative = numericChangeValue < 0
 
   const stats = [
     {
       label: "Market Price",
       value: `TZS ${c.marketPrice?.toLocaleString() ?? "N/A"}`,
-      sub: `${formatPercent(changePercent, { signed: true })}%`,
+      sub: `${typeof changeValue === "number" ? `${changeValue > 0 ? "+" : ""}${changeValue}` : "N/A"} | Shares on Offer: ${c.bestOfferQuantity?.toLocaleString() ?? "N/A"}`,
       subColor: isPositive ? "text-gain" : isNegative ? "text-loss" : "text-muted-foreground",
       icon: isPositive ? TrendingUp : isNegative ? TrendingDown : Activity,
       iconColor: isPositive ? "text-gain" : isNegative ? "text-loss" : "text-muted-foreground",
@@ -51,7 +52,7 @@ export function StatCards({ selectedCompany }: StatCardsProps) {
     {
       label: "Volume",
       value: c.volume?.toLocaleString() ?? "N/A",
-      sub: `Open: TZS ${c.openingPrice?.toLocaleString() ?? "N/A"}`,
+      sub: `Open: TZS ${c.openingPrice?.toLocaleString() ?? "N/A"} | Bid Qty: ${c.bestBidQuantity?.toLocaleString() ?? "N/A"}`,
       subColor: "text-muted-foreground",
       icon: BarChart3,
       iconColor: "text-chart-2",
@@ -74,7 +75,7 @@ export function StatCards({ selectedCompany }: StatCardsProps) {
               ? `TZS ${(c.marketCap / 1e9).toFixed(2)}B`
               : `TZS ${c.marketCap.toLocaleString()}`
           : "N/A",
-      sub: `Shares: ${c.security?.totalSharesIssued?.toLocaleString() ?? "N/A"}`,
+      sub: `High: TZS ${c.high?.toLocaleString() ?? "N/A"} | Low: TZS ${c.low?.toLocaleString() ?? "N/A"}`,
       subColor: "text-muted-foreground",
       icon: DollarSign,
       iconColor: "text-chart-4",

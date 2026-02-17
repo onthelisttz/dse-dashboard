@@ -230,6 +230,7 @@ export function PriceChart({
   const [chartType, setChartType] = useState<ChartType>("area")
   const [customYears, setCustomYears] = useState("")
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isSmallScreen, setIsSmallScreen] = useState(false)
   const [alertTargetPrice, setAlertTargetPrice] = useState("")
   const [alertComment, setAlertComment] = useState("")
   const [alertExpiresAt, setAlertExpiresAt] = useState("")
@@ -266,6 +267,16 @@ export function PriceChart({
     [alerts]
   )
 
+  const selectedCompanyMarketData = useMemo(
+    () => companies.find((company) => company.company.id === selectedCompanyId) ?? null,
+    [companies, selectedCompanyId]
+  )
+
+  const liveMarketPrice = useMemo(() => {
+    const value = toFiniteNumber(selectedCompanyMarketData?.marketPrice)
+    return value > 0 ? value : null
+  }, [selectedCompanyMarketData?.marketPrice])
+
   const handlePeriodChange = useCallback(
     (value: string) => {
       if (value === "Custom") return
@@ -276,6 +287,16 @@ export function PriceChart({
     },
     [onDaysChange]
   )
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const media = window.matchMedia("(max-width: 640px)")
+    const update = () => setIsSmallScreen(media.matches)
+    update()
+
+    media.addEventListener("change", update)
+    return () => media.removeEventListener("change", update)
+  }, [])
 
   useEffect(() => {
     if (!isFullscreen) return
@@ -317,7 +338,7 @@ export function PriceChart({
 
     const base = timeframe === "weekly" ? aggregateWeekly(deduped) : deduped
 
-    return base
+    const points = base
       .map((item) => {
         const time = dateToTimestamp(item.trade_date) as any
         if (!Number.isFinite(time)) return null
@@ -355,7 +376,35 @@ export function PriceChart({
         }
       })
       .filter((point): point is NonNullable<typeof point> => point !== null)
-  }, [safeData, timeframe, chartType])
+
+    if (liveMarketPrice && points.length > 0) {
+      const lastIndex = points.length - 1
+      if (chartType === "candlestick") {
+        const lastPoint = points[lastIndex] as {
+          time: number
+          open: number
+          high: number
+          low: number
+          close: number
+        }
+        const open = lastPoint.open > 0 ? lastPoint.open : liveMarketPrice
+        points[lastIndex] = {
+          ...lastPoint,
+          close: liveMarketPrice,
+          high: Math.max(lastPoint.high, open, liveMarketPrice),
+          low: Math.min(lastPoint.low, open, liveMarketPrice),
+        }
+      } else {
+        const lastPoint = points[lastIndex] as { time: number; value: number }
+        points[lastIndex] = {
+          ...lastPoint,
+          value: liveMarketPrice,
+        }
+      }
+    }
+
+    return points
+  }, [safeData, timeframe, chartType, liveMarketPrice])
 
   const sortedData = useMemo(() => {
     if (safeData.length === 0) return []
@@ -378,6 +427,8 @@ export function PriceChart({
     const value = getDisplayClose(sortedData[sortedData.length - 1])
     return value > 0 ? value : null
   }, [sortedData])
+
+  const currentReferencePrice = liveMarketPrice ?? latestClosePrice
 
   const allCompanyAlerts = useMemo(
     () =>
@@ -435,9 +486,9 @@ export function PriceChart({
 
   const directionPreview = useMemo(() => {
     const targetPrice = parsePriceInput(alertTargetPrice)
-    if (!targetPrice || !latestClosePrice) return null
-    return targetPrice >= latestClosePrice ? "above" : "below"
-  }, [alertTargetPrice, latestClosePrice])
+    if (!targetPrice || !currentReferencePrice) return null
+    return targetPrice >= currentReferencePrice ? "above" : "below"
+  }, [alertTargetPrice, currentReferencePrice])
 
   const chartHeight = isFullscreen ? "calc(100vh - 440px)" : "350px"
   const isDark = resolvedTheme === "dark"
@@ -720,6 +771,7 @@ export function PriceChart({
         layout: {
           background: { type: ColorType.Solid, color: "transparent" },
           textColor: isDark ? "#9ca3af" : "#6b7280",
+          fontSize: isSmallScreen ? 10 : 11,
         },
         grid: {
           vertLines: { color: isDark ? "rgba(55, 65, 81, 0.5)" : "rgba(229, 231, 235, 0.5)" },
@@ -743,6 +795,9 @@ export function PriceChart({
         rightPriceScale: {
           borderColor: isDark ? "#374151" : "#e5e7eb",
           ...NON_NEGATIVE_SCALE_OPTIONS,
+          alignLabels: false,
+          entireTextOnly: true,
+          minimumWidth: isSmallScreen ? 42 : 0,
         },
         handleScale: {
           mouseWheel: true,
@@ -766,9 +821,16 @@ export function PriceChart({
           borderColor: isDark ? "#374151" : "#e5e7eb",
           timeVisible: true,
           secondsVisible: false,
+          rightOffset: 0,
+          rightOffsetPixels: 0,
+          fixRightEdge: true,
+          lockVisibleTimeRangeOnResize: true,
         },
         localization: {
-          priceFormatter: (price: number) => price.toLocaleString(),
+          priceFormatter: (price: number) =>
+            isSmallScreen
+              ? Math.round(price).toString()
+              : price.toLocaleString(),
         },
         width: container.clientWidth,
         height: container.clientHeight,
@@ -779,6 +841,7 @@ export function PriceChart({
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
         textColor: isDark ? "#9ca3af" : "#6b7280",
+        fontSize: isSmallScreen ? 10 : 11,
       },
       grid: {
         vertLines: { color: isDark ? "rgba(55, 65, 81, 0.5)" : "rgba(229, 231, 235, 0.5)" },
@@ -787,9 +850,16 @@ export function PriceChart({
       rightPriceScale: {
         borderColor: isDark ? "#374151" : "#e5e7eb",
         ...NON_NEGATIVE_SCALE_OPTIONS,
+        alignLabels: false,
+        entireTextOnly: true,
+        minimumWidth: isSmallScreen ? 42 : 0,
       },
       timeScale: {
         borderColor: isDark ? "#374151" : "#e5e7eb",
+        rightOffset: 0,
+        rightOffsetPixels: 0,
+        fixRightEdge: true,
+        lockVisibleTimeRangeOnResize: true,
       },
     })
 
@@ -840,6 +910,7 @@ export function PriceChart({
 
     if (chartData.length > 0) {
       chartRef.current.timeScale().fitContent()
+      chartRef.current.timeScale().scrollToRealTime()
     }
     clampPriceScaleToZero()
     requestOverlaySync()
@@ -859,7 +930,7 @@ export function PriceChart({
     return () => {
       window.removeEventListener("resize", handleResize)
     }
-  }, [chartData, chartType, isDark, priceChange, lineColor, clampPriceScaleToZero, nonNegativeAutoscale, upColor, downColor, requestOverlaySync])
+  }, [chartData, chartType, isDark, isSmallScreen, priceChange, lineColor, clampPriceScaleToZero, nonNegativeAutoscale, upColor, downColor, requestOverlaySync])
 
   useEffect(() => {
     requestOverlaySync()
@@ -904,12 +975,34 @@ export function PriceChart({
   }, [isFullscreen, chartData.length, chartHeight])
 
   useEffect(() => {
+    if (!chartRef.current || !chartContainerRef.current) return
+    if (typeof ResizeObserver === "undefined") return
+
+    const container = chartContainerRef.current
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (!entry || !chartRef.current) return
+      const width = entry.contentRect.width
+      const height = entry.contentRect.height
+      if (width > 0 && height > 0) {
+        chartRef.current.applyOptions({ width, height })
+        clampPriceScaleToZero()
+        requestOverlaySync()
+      }
+    })
+
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [isFullscreen, chartHeight, chartType, timeframe, clampPriceScaleToZero, requestOverlaySync])
+
+  useEffect(() => {
     if (!chartRef.current) return
 
     chartRef.current.applyOptions({
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
         textColor: isDark ? "#9ca3af" : "#6b7280",
+        fontSize: isSmallScreen ? 10 : 11,
       },
       grid: {
         vertLines: { color: isDark ? "rgba(55, 65, 81, 0.5)" : "rgba(229, 231, 235, 0.5)" },
@@ -929,13 +1022,26 @@ export function PriceChart({
       rightPriceScale: {
         borderColor: isDark ? "#374151" : "#e5e7eb",
         ...NON_NEGATIVE_SCALE_OPTIONS,
+        alignLabels: false,
+        entireTextOnly: true,
+        minimumWidth: isSmallScreen ? 42 : 0,
       },
       timeScale: {
         borderColor: isDark ? "#374151" : "#e5e7eb",
+        rightOffset: 0,
+        rightOffsetPixels: 0,
+        fixRightEdge: true,
+        lockVisibleTimeRangeOnResize: true,
+      },
+      localization: {
+        priceFormatter: (price: number) =>
+          isSmallScreen
+            ? Math.round(price).toString()
+            : price.toLocaleString(),
       },
     })
     clampPriceScaleToZero()
-  }, [isDark, clampPriceScaleToZero])
+  }, [isDark, isSmallScreen, clampPriceScaleToZero])
 
   useEffect(() => {
     return () => {
@@ -1134,7 +1240,7 @@ export function PriceChart({
             {alertError && <span className="text-[11px] text-loss">{alertError}</span>}
           </div>
         </CardHeader>
-        <CardContent className="pb-4">
+        <CardContent className="px-0 pb-4 sm:px-6">
           <div className="relative">
             <div
               ref={chartContainerRef}
@@ -1337,7 +1443,7 @@ export function PriceChart({
               />
             </div>
 
-            {latestClosePrice && directionPreview && (
+            {currentReferencePrice && directionPreview && (
               <div className="flex items-center gap-2 rounded-md border border-border bg-secondary/20 px-2 py-1.5">
                 <span
                   className={cn(
@@ -1355,7 +1461,7 @@ export function PriceChart({
                 </span>
                 <p className="text-xs text-muted-foreground">
                   Direction auto: <span className="font-semibold">{directionPreview}</span> current price (
-                  TZS {latestClosePrice.toLocaleString()})
+                  TZS {currentReferencePrice.toLocaleString()})
                 </p>
               </div>
             )}

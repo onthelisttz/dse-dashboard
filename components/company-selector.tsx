@@ -49,11 +49,11 @@ export function CompanySelector({ companies, selectedId, onSelect }: CompanySele
   }, [open])
 
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className="relative w-full sm:w-auto">
       <Button
         variant="outline"
         onClick={() => setOpen(!open)}
-        className="w-[260px] justify-between border-border bg-card text-foreground hover:bg-secondary"
+        className="w-full max-w-full justify-between border-border bg-card text-foreground hover:bg-secondary sm:w-[260px]"
       >
         <span className="flex items-center gap-2 truncate">
           {selected ? (
@@ -71,7 +71,7 @@ export function CompanySelector({ companies, selectedId, onSelect }: CompanySele
       </Button>
 
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-1 w-[320px] rounded-md border border-border bg-popover shadow-lg">
+        <div className="absolute right-0 top-full z-50 mt-1 w-full max-w-[calc(100vw-1rem)] rounded-md border border-border bg-popover shadow-lg sm:w-[320px]">
           <div className="flex items-center gap-2 border-b border-border px-3 py-2">
             <Search className="h-4 w-4 text-muted-foreground" />
             <Input

@@ -24,28 +24,28 @@ const SWR_BASE_CONFIG = {
   errorRetryInterval: 8000,
 } as const
 
+const ONE_HOUR_MS = 60 * 60 * 1000
+
 export function useMarketData() {
-  return useSWR<MarketDataItem[]>("/api/market-data", fetcher, {
+  return useSWR<MarketDataItem[]>("/api/market-data?isBond=false", fetcher, {
     ...SWR_BASE_CONFIG,
-    refreshInterval: 60000,
+    refreshInterval: ONE_HOUR_MS,
   })
 }
 
-export function useStatistics(companyId: number, days: number, symbol?: string) {
-  const params = new URLSearchParams({ days: String(days) })
-  if (symbol) {
-    params.set("symbol", symbol)
-  } else {
-    params.set("companyId", String(companyId))
-  }
+export function useStatistics(companyId: number, days: number, _symbol?: string) {
+  const params = new URLSearchParams({
+    companyId: String(companyId),
+    days: String(days),
+  })
 
   return useSWR<StatisticsItem[]>(
-    `/api/statistics?${params.toString()}`,
+    `/api/market-data/statistics?${params.toString()}`,
     fetcher,
     {
       ...SWR_BASE_CONFIG,
       keepPreviousData: true,
-      refreshInterval: 60000,
+      refreshInterval: ONE_HOUR_MS,
     }
   )
 }
@@ -53,13 +53,13 @@ export function useStatistics(companyId: number, days: number, symbol?: string) 
 export function useLivePrices() {
   return useSWR<LivePriceResponse>("/api/live-prices", fetcher, {
     ...SWR_BASE_CONFIG,
-    refreshInterval: 30000,
+    refreshInterval: ONE_HOUR_MS,
   })
 }
 
 export function useMarketMeta() {
   return useSWR<MarketMetaResponse>("/api/market-meta", fetcher, {
     ...SWR_BASE_CONFIG,
-    refreshInterval: 60000,
+    refreshInterval: ONE_HOUR_MS,
   })
 }

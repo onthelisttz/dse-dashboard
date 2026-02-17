@@ -212,11 +212,11 @@ export function CompanyComparison({
 
   const fetchSeries = useCallback(
     async (companyId: number): Promise<StatisticsItem[]> => {
-      const symbol = symbolByCompanyId[companyId]
-      const target = symbol
-        ? `symbol=${encodeURIComponent(symbol)}`
-        : `companyId=${companyId}`
-      const res = await fetch(`/api/statistics?${target}&days=${days}`)
+      const params = new URLSearchParams({
+        companyId: String(companyId),
+        days: String(days),
+      })
+      const res = await fetch(`/api/market-data/statistics?${params.toString()}`)
       if (!res.ok) throw new Error("Failed to fetch statistics")
       const raw = await res.json()
       if (!Array.isArray(raw)) return []
@@ -238,7 +238,7 @@ export function CompanyComparison({
 
       return timeframe === "weekly" ? aggregateWeekly(cleaned) : cleaned
     },
-    [days, timeframe, symbolByCompanyId]
+    [days, timeframe]
   )
 
   useEffect(() => {

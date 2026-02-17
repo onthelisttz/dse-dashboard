@@ -25,8 +25,10 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
 
 export function usePriceAlerts() {
   const swr = useSWR<PriceAlert[]>("/api/alerts", fetcher, {
-    refreshInterval: 30000,
-    revalidateOnFocus: true,
+    refreshInterval: 60 * 60 * 1000,
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+    dedupingInterval: 15000,
   })
 
   const createAlert = async (input: CreatePriceAlertInput) => {
