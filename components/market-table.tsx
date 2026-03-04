@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import {
   Table,
   TableBody,
@@ -12,8 +12,9 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
-import { ArrowUp, ArrowDown, ArrowUpDown, Check, Eye, Info } from "lucide-react"
+import { ArrowUp, ArrowDown, ArrowUpDown, Check, Eye, Info, X } from "lucide-react"
 import type { MarketDataItem } from "@/lib/types"
 
 interface MarketTableProps {
@@ -98,6 +99,27 @@ function getSortValue(item: MarketDataItem, key: SortKey): number | string {
   }
 }
 
+function buildSearchText(item: MarketDataItem): string {
+  return [
+    item.company.symbol,
+    item.company.name,
+    item.marketPrice,
+    item.changeValue,
+    item.high,
+    item.low,
+    item.tradeTime,
+    item.lastTradeDate,
+    item.volume,
+    item.bestOfferQuantity,
+    item.bestBidQuantity,
+    item.minLimit,
+    item.maxLimit,
+    item.marketCap,
+  ]
+    .map((value) => (value == null ? "" : String(value).toLowerCase()))
+    .join(" ")
+}
+
 function SortIcon({ active, direction }: { active: boolean; direction: SortDir }) {
   if (!active) return <ArrowUpDown className="ml-1 inline h-3 w-3 opacity-40" />
   return direction === "asc" ? (
@@ -118,6 +140,8 @@ export function MarketTable({
   const [sortKey, setSortKey] = useState<SortKey>("symbol")
   const [sortDir, setSortDir] = useState<SortDir>("asc")
   const [activeRowId, setActiveRowId] = useState<number | null>(null)
+  const [searchQuery, setSearchQuery] = useState("")
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -142,6 +166,13 @@ export function MarketTable({
     })
   }, [data, sortKey, sortDir])
 
+  const normalizedQuery = searchQuery.trim().toLowerCase()
+
+  const filtered = useMemo(() => {
+    if (!normalizedQuery) return sorted
+    return sorted.filter((item) => buildSearchText(item).includes(normalizedQuery))
+  }, [normalizedQuery, sorted])
+
   const columns: { key: SortKey; label: string }[] = [
     { key: "symbol", label: "Security" },
     { key: "price", label: "Price" },
@@ -160,7 +191,33 @@ export function MarketTable({
   return (
     <Card className="border-border bg-card">
       <CardHeader className="pb-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <CardTitle className="text-sm font-semibold text-foreground">Market Overview</CardTitle>
+          <div className="relative w-full sm:w-72">
+            <Input
+              ref={searchInputRef}
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search market overview..."
+              className="h-8 border-border bg-card pr-8 text-xs"
+              aria-label="Search market overview"
+            />
+            {searchQuery.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery("")
+                  searchInputRef.current?.focus()
+                }}
+                className="absolute right-1 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label="Clear search"
+                title="Clear search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
       </CardHeader>
       <CardContent className="p-0">
         <Table className="min-w-[1360px]" containerClassName="max-h-[400px] overflow-auto">
@@ -203,7 +260,7 @@ export function MarketTable({
                     </TableCell>
                   </TableRow>
                 ))
-              : sorted.map((item) => {
+              : filtered.map((item) => {
                   const changeValue = item.changeValue
                   const timeValue = formatDisplayTime(item.tradeTime, item.lastTradeDate)
                   const isDetailsOpenForRow = detailsCompanyId === item.company.id
@@ -326,6 +383,18 @@ export function MarketTable({
                     </TableRow>
                   )
                 })}
+            {!isLoading && filtered.length === 0 && (
+              <TableRow className="border-border">
+                <TableCell
+                  colSpan={columns.length + 1}
+                  className="py-8 text-center text-sm text-muted-foreground"
+                >
+                  {normalizedQuery
+                    ? `No matches found for "${searchQuery.trim()}".`
+                    : "No market overview data available."}
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </CardContent>

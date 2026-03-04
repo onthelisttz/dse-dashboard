@@ -35,6 +35,7 @@ import {
   BellPlus,
   BarChart3,
   GripVertical,
+  Info,
   LineChart,
   Loader2,
   Maximize2,
@@ -68,6 +69,8 @@ interface PriceChartProps {
   alerts: PriceAlert[]
   showAlertsOnChart: boolean
   onShowAlertsOnChartChange: (visible: boolean) => void
+  isOrderBookOpen: boolean
+  onOpenOrderBook: () => void
   onCreateAlert: (input: CreatePriceAlertInput) => Promise<unknown>
   onUpdateAlert: (alertId: string, patch: UpdatePriceAlertInput) => Promise<unknown>
   onDeleteAlert: (alertId: string) => Promise<void>
@@ -225,6 +228,8 @@ export function PriceChart({
   alerts,
   showAlertsOnChart,
   onShowAlertsOnChartChange,
+  isOrderBookOpen,
+  onOpenOrderBook,
   onCreateAlert,
   onUpdateAlert,
   onDeleteAlert,
@@ -1191,6 +1196,22 @@ export function PriceChart({
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={onOpenOrderBook}
+                className={cn(
+                  "h-9 w-9 border-border bg-card",
+                  isOrderBookOpen
+                    ? "border-primary/40 bg-primary/10 text-primary hover:bg-primary/15"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+                aria-label={`Open ${companySymbol} details`}
+                title={`Open ${companySymbol} details`}
+              >
+                <Info className="h-4 w-4" />
+              </Button>
               <Button
                 type="button"
                 variant="outline"

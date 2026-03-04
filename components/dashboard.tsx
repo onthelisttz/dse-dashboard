@@ -327,6 +327,8 @@ export function Dashboard({ user }: DashboardProps) {
               alerts={alerts}
               showAlertsOnChart={showAlertsOnChart}
               onShowAlertsOnChartChange={setShowAlertsOnChart}
+              isOrderBookOpen={orderBookDetailsCompanyId === selectedCompanyId}
+              onOpenOrderBook={() => setOrderBookDetailsCompanyId(selectedCompanyId)}
               onCreateAlert={createAlert}
               onUpdateAlert={updateAlert}
               onDeleteAlert={deleteAlert}
@@ -352,7 +354,9 @@ export function Dashboard({ user }: DashboardProps) {
           data={marketData}
           isLoading={marketLoading}
           selectedId={selectedCompanyId}
+          detailsCompanyId={orderBookDetailsCompanyId}
           onSelect={setSelectedCompanyId}
+          onOpenDetails={(company) => setOrderBookDetailsCompanyId(company.company.id)}
         />
 
         {/* Market Table */}

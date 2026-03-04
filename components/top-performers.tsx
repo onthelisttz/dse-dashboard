@@ -4,18 +4,28 @@ import { useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Button } from "@/components/ui/button"
 import { cn, formatPercent } from "@/lib/utils"
-import { TrendingUp, TrendingDown, Trophy, Eye, Check } from "lucide-react"
+import { TrendingUp, TrendingDown, Trophy, Eye, Check, Info } from "lucide-react"
 import type { MarketDataItem } from "@/lib/types"
 
 interface TopPerformersProps {
   data: MarketDataItem[] | undefined
   isLoading: boolean
   selectedId: number
+  detailsCompanyId: number | null
   onSelect: (id: number) => void
+  onOpenDetails: (company: MarketDataItem) => void
 }
 
-export function TopPerformers({ data, isLoading, selectedId, onSelect }: TopPerformersProps) {
+export function TopPerformers({
+  data,
+  isLoading,
+  selectedId,
+  detailsCompanyId,
+  onSelect,
+  onOpenDetails,
+}: TopPerformersProps) {
   const topGainers = useMemo(() => {
     if (!data) return []
     return [...data]
@@ -72,45 +82,75 @@ export function TopPerformers({ data, isLoading, selectedId, onSelect }: TopPerf
               {topGainers.map((item, i) => {
                 const pctChange = (item.change ?? 0)
                 const isSelected = selectedId === item.company.id
+                const isDetailsOpenForRow = detailsCompanyId === item.company.id
                 return (
-                  <button
+                  <div
                     key={item.company.id}
-                    onClick={() => onSelect(item.company.id)}
                     className={cn(
-                      "flex w-full items-center gap-3 border-b border-border px-4 py-2.5 text-left transition-colors last:border-0",
+                      "flex w-full items-center gap-3 border-b border-border px-4 py-2.5 transition-colors last:border-0",
                       isSelected ? "bg-primary/5" : "hover:bg-muted/50"
                     )}
                   >
-                    <span className={cn(
-                      "flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold",
-                      i === 0 ? "bg-gain/20 text-gain" : "bg-muted text-muted-foreground"
-                    )}>
-                      {i === 0 ? <Trophy className="h-3 w-3" /> : i + 1}
-                    </span>
-                    <div className="flex flex-1 items-center justify-between">
-                      <div>
-                        <span className="text-sm font-semibold text-foreground">{item.company.symbol}</span>
-                        <span className="ml-2 text-xs text-muted-foreground">
-                          TZS {item.marketPrice?.toLocaleString()}
-                        </span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-sm font-semibold text-gain">
-                          {formatPercent(pctChange, { signed: true })}%
-                        </span>
-                      </div>
-                    </div>
-                    <span
-                      className={cn(
-                        "ml-1 inline-flex h-7 w-7 items-center justify-center rounded-full border",
-                        isSelected
-                          ? "border-primary/40 bg-primary/10 text-primary"
-                          : "border-border bg-card text-muted-foreground"
-                      )}
+                    <button
+                      type="button"
+                      onClick={() => onSelect(item.company.id)}
+                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
                     >
-                      {isSelected ? <Check className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                    </span>
-                  </button>
+                      <span className={cn(
+                        "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold",
+                        i === 0 ? "bg-gain/20 text-gain" : "bg-muted text-muted-foreground"
+                      )}>
+                        {i === 0 ? <Trophy className="h-3 w-3" /> : i + 1}
+                      </span>
+                      <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <span className="text-sm font-semibold text-foreground">{item.company.symbol}</span>
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            TZS {item.marketPrice?.toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-sm font-semibold text-gain">
+                            {formatPercent(pctChange, { signed: true })}%
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                    <div className="ml-1 flex items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className={cn(
+                          "h-7 w-7 rounded-full border",
+                          isSelected
+                            ? "border-primary/40 bg-primary/10 text-primary hover:bg-primary/15"
+                            : "border-border bg-card text-muted-foreground hover:bg-muted"
+                        )}
+                        onClick={() => onSelect(item.company.id)}
+                        aria-label={`View ${item.company.symbol}`}
+                        title={`View ${item.company.symbol}`}
+                      >
+                        {isSelected ? <Check className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className={cn(
+                          "h-7 w-7 rounded-full border",
+                          isDetailsOpenForRow
+                            ? "border-primary/40 bg-primary/10 text-primary hover:bg-primary/15"
+                            : "border-border bg-card text-muted-foreground hover:bg-muted"
+                        )}
+                        onClick={() => onOpenDetails(item)}
+                        aria-label={`Open ${item.company.symbol} details`}
+                        title={`Open ${item.company.symbol} details`}
+                      >
+                        <Info className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
                 )
               })}
             </div>
@@ -137,42 +177,72 @@ export function TopPerformers({ data, isLoading, selectedId, onSelect }: TopPerf
               {topLosers.map((item, i) => {
                 const pctChange = (item.change ?? 0)
                 const isSelected = selectedId === item.company.id
+                const isDetailsOpenForRow = detailsCompanyId === item.company.id
                 return (
-                  <button
+                  <div
                     key={item.company.id}
-                    onClick={() => onSelect(item.company.id)}
                     className={cn(
-                      "flex w-full items-center gap-3 border-b border-border px-4 py-2.5 text-left transition-colors last:border-0",
+                      "flex w-full items-center gap-3 border-b border-border px-4 py-2.5 transition-colors last:border-0",
                       isSelected ? "bg-primary/5" : "hover:bg-muted/50"
                     )}
                   >
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground">
-                      {i + 1}
-                    </span>
-                    <div className="flex flex-1 items-center justify-between">
-                      <div>
-                        <span className="text-sm font-semibold text-foreground">{item.company.symbol}</span>
-                        <span className="ml-2 text-xs text-muted-foreground">
-                          TZS {item.marketPrice?.toLocaleString()}
-                        </span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-sm font-semibold text-loss">
-                          {formatPercent(pctChange, { signed: true })}%
-                        </span>
-                      </div>
-                    </div>
-                    <span
-                      className={cn(
-                        "ml-1 inline-flex h-7 w-7 items-center justify-center rounded-full border",
-                        isSelected
-                          ? "border-primary/40 bg-primary/10 text-primary"
-                          : "border-border bg-card text-muted-foreground"
-                      )}
+                    <button
+                      type="button"
+                      onClick={() => onSelect(item.company.id)}
+                      className="flex min-w-0 flex-1 items-center gap-3 text-left"
                     >
-                      {isSelected ? <Check className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                    </span>
-                  </button>
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground">
+                        {i + 1}
+                      </span>
+                      <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <span className="text-sm font-semibold text-foreground">{item.company.symbol}</span>
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            TZS {item.marketPrice?.toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-sm font-semibold text-loss">
+                            {formatPercent(pctChange, { signed: true })}%
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                    <div className="ml-1 flex items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className={cn(
+                          "h-7 w-7 rounded-full border",
+                          isSelected
+                            ? "border-primary/40 bg-primary/10 text-primary hover:bg-primary/15"
+                            : "border-border bg-card text-muted-foreground hover:bg-muted"
+                        )}
+                        onClick={() => onSelect(item.company.id)}
+                        aria-label={`View ${item.company.symbol}`}
+                        title={`View ${item.company.symbol}`}
+                      >
+                        {isSelected ? <Check className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className={cn(
+                          "h-7 w-7 rounded-full border",
+                          isDetailsOpenForRow
+                            ? "border-primary/40 bg-primary/10 text-primary hover:bg-primary/15"
+                            : "border-border bg-card text-muted-foreground hover:bg-muted"
+                        )}
+                        onClick={() => onOpenDetails(item)}
+                        aria-label={`Open ${item.company.symbol} details`}
+                        title={`Open ${item.company.symbol} details`}
+                      >
+                        <Info className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
                 )
               })}
             </div>
