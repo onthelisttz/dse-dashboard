@@ -8,7 +8,7 @@ const _inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 const _jetbrains = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains' })
 
 export const metadata: Metadata = {
-  title: 'DSE Market Dashboard',
+  title: 'DSE Dashboard',
   description: 'Real-time Dar es Salaam Stock Exchange market data dashboard with interactive charts and live price tracking',
   icons: {
     icon: '/favicon.ico',
