@@ -164,7 +164,7 @@ export function Dashboard({ user }: DashboardProps) {
             <LogoMark />
             <div className="min-w-0">
               <h1 className="inline-flex items-center gap-2 text-base font-bold text-foreground sm:text-lg">
-                <span className="hidden truncate sm:inline">DSE Market Dashboard</span>
+                <span className="hidden truncate sm:inline">DSE</span>
                 <span
                   className="inline-flex items-center"
                   role="status"
@@ -379,7 +379,7 @@ export function Dashboard({ user }: DashboardProps) {
           <div className="flex flex-col items-center gap-1">
             <div className="flex items-center gap-2">
               <LogoMark className="h-5 w-5 rounded-md" iconClassName="h-3 w-3" />
-              <span className="text-xs font-medium text-muted-foreground">DSE Market Dashboard</span>
+              <span className="text-xs font-medium text-muted-foreground">DSE</span>
             </div>
             <p className="text-center text-xs text-muted-foreground">
               Data sourced from Dar es Salaam Stock Exchange (DSE). Prices may be delayed.
