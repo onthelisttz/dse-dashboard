@@ -30,6 +30,8 @@ import {
 import {
   ArrowDown,
   ArrowUp,
+  ChevronLeft,
+  ChevronRight,
   BellPlus,
   BarChart3,
   GripVertical,
@@ -273,6 +275,31 @@ export function PriceChart({
     [companies, selectedCompanyId]
   )
 
+  const selectedCompanyIndex = useMemo(
+    () => companies.findIndex((company) => company.company.id === selectedCompanyId),
+    [companies, selectedCompanyId]
+  )
+
+  const canGoToPreviousCompany = selectedCompanyIndex > 0
+  const canGoToNextCompany =
+    selectedCompanyIndex >= 0 && selectedCompanyIndex < companies.length - 1
+
+  const goToPreviousCompany = useCallback(() => {
+    if (!canGoToPreviousCompany) return
+    const previousCompany = companies[selectedCompanyIndex - 1]
+    if (previousCompany) {
+      onSelectCompany(previousCompany.company.id)
+    }
+  }, [canGoToPreviousCompany, companies, onSelectCompany, selectedCompanyIndex])
+
+  const goToNextCompany = useCallback(() => {
+    if (!canGoToNextCompany) return
+    const nextCompany = companies[selectedCompanyIndex + 1]
+    if (nextCompany) {
+      onSelectCompany(nextCompany.company.id)
+    }
+  }, [canGoToNextCompany, companies, onSelectCompany, selectedCompanyIndex])
+
   const companyDescription = useMemo(() => {
     const securityDescription = selectedCompanyMarketData?.security?.securityDesc?.trim()
     if (securityDescription) return securityDescription
@@ -313,6 +340,42 @@ export function PriceChart({
       document.body.style.overflow = previousOverflow
     }
   }, [isFullscreen])
+
+  useEffect(() => {
+    const handleKeyboardCompanyNavigation = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.ctrlKey || event.altKey || event.metaKey) return
+
+      const target = event.target as HTMLElement | null
+      if (target) {
+        const tagName = target.tagName
+        const isTypingField =
+          target.isContentEditable ||
+          tagName === "INPUT" ||
+          tagName === "TEXTAREA" ||
+          tagName === "SELECT" ||
+          target.getAttribute("role") === "textbox"
+        if (isTypingField) return
+      }
+
+      if (event.key === "ArrowRight" || event.key === "PageDown" || event.key === "BrowserForward") {
+        if (!canGoToNextCompany) return
+        event.preventDefault()
+        goToNextCompany()
+        return
+      }
+
+      if (event.key === "ArrowLeft" || event.key === "PageUp" || event.key === "BrowserBack") {
+        if (!canGoToPreviousCompany) return
+        event.preventDefault()
+        goToPreviousCompany()
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyboardCompanyNavigation)
+    return () => {
+      window.removeEventListener("keydown", handleKeyboardCompanyNavigation)
+    }
+  }, [canGoToNextCompany, canGoToPreviousCompany, goToNextCompany, goToPreviousCompany])
 
   useEffect(() => {
     setIsPlacingAlert(false)
@@ -1102,6 +1165,32 @@ export function PriceChart({
                 selectedId={selectedCompanyId}
                 onSelect={onSelectCompany}
               />
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={goToPreviousCompany}
+                  disabled={!canGoToPreviousCompany}
+                  className="h-9 w-9 border-border bg-card"
+                  aria-label="Previous company"
+                  title="Previous company (ArrowLeft / PageUp)"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={goToNextCompany}
+                  disabled={!canGoToNextCompany}
+                  className="h-9 w-9 border-border bg-card"
+                  aria-label="Next company"
+                  title="Next company (ArrowRight / PageDown)"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
               <Button
                 type="button"
                 variant="outline"
@@ -1190,52 +1279,60 @@ export function PriceChart({
               </div>
             </div>
 
-            <div className="rounded-md border border-border bg-secondary/40 p-2">
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Chart</p>
-              <div className="flex items-center rounded-md border border-border bg-secondary p-0.5">
+            <div className="flex items-center justify-end sm:col-span-2 xl:col-start-3 xl:col-span-2">
+              <div className="inline-flex h-8 items-center gap-0.5 rounded-md border border-border bg-secondary/30 px-1">
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => setChartType("area")}
-                  className={`h-7 flex-1 px-2 ${chartType === "area" ? "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  className={`h-6 px-1.5 text-[11px] ${chartType === "area" ? "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  aria-label="Area chart"
+                  title="Area chart"
                 >
-                  <LineChart className="mr-1 h-3.5 w-3.5" />
-                  <span className="text-xs">Area</span>
+                  <LineChart className="h-3 w-3 sm:mr-1" />
+                  <span className="hidden sm:inline">Area</span>
                 </Button>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => setChartType("candlestick")}
-                  className={`h-7 flex-1 px-2 ${chartType === "candlestick" ? "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  className={`h-6 px-1.5 text-[11px] ${chartType === "candlestick" ? "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  aria-label="Candlestick chart"
+                  title="Candlestick chart"
                 >
-                  <BarChart3 className="mr-1 h-3.5 w-3.5" />
-                  <span className="text-xs">Candle</span>
+                  <BarChart3 className="h-3 w-3 sm:mr-1" />
+                  <span className="hidden sm:inline">Candle</span>
                 </Button>
-              </div>
-            </div>
 
-            <div className="rounded-md border border-border bg-secondary/40 p-2">
-              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Interval</p>
-              <Tabs
-                value={timeframe}
-                onValueChange={(v) => onTimeframeChange(v as "daily" | "weekly")}
-                className="w-full"
-              >
-                <TabsList className="h-8 w-full bg-secondary p-0.5">
-                  <TabsTrigger
-                    value="daily"
-                    className="h-7 flex-1 text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                  >
-                    Daily
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="weekly"
-                    className="h-7 flex-1 text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                  >
-                    Weekly
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
+                <div className="mx-0.5 h-4 w-px bg-border/70" />
+
+                <Tabs
+                  value={timeframe}
+                  onValueChange={(v) => onTimeframeChange(v as "daily" | "weekly")}
+                  className="w-auto"
+                >
+                  <TabsList className="h-6 bg-transparent p-0">
+                    <TabsTrigger
+                      value="daily"
+                      className="h-6 px-1.5 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:px-2"
+                      aria-label="Daily interval"
+                      title="Daily"
+                    >
+                      <span className="sm:hidden">D</span>
+                      <span className="hidden sm:inline">Daily</span>
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="weekly"
+                      className="h-6 px-1.5 text-[11px] data-[state=active]:bg-primary data-[state=active]:text-primary-foreground sm:px-2"
+                      aria-label="Weekly interval"
+                      title="Weekly"
+                    >
+                      <span className="sm:hidden">W</span>
+                      <span className="hidden sm:inline">Weekly</span>
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
             </div>
           </div>
 
