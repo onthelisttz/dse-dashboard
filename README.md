@@ -2,7 +2,7 @@
 
 Real-time Dar es Salaam Stock Exchange market data dashboard with live price tracking, interactive charts, order book data, company comparison, and price alerts.
 
-![DSE Dashboard Screenshot](/screenshots/dashboard.png)
+![DSE Dashboard Screenshot](public/screenshots/dashboard.png)
 
 ## Features
 
