@@ -1,44 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { fetchJsonWithTimeout } from "@/lib/server-fetch"
 
-interface StatisticsRow {
-  id?: number | string
-  trade_date?: string
-  tradeDate?: string
-  date?: string
-  company?: string
-  symbol?: string
-  security_code?: string
-  securityCode?: string
-  turnover?: number | string
-  turn_over?: number | string
-  turnOver?: number | string
-  volume?: number | string
-  high?: number | string
-  high_price?: number | string
-  highPrice?: number | string
-  low?: number | string
-  low_price?: number | string
-  lowPrice?: number | string
-  opening_price?: number | string
-  openingPrice?: number | string
-  open?: number | string
-  closing_price?: number | string
-  closingPrice?: number | string
-  close?: number | string
-  price?: number | string
-  shares_in_issue?: number | string
-  sharesInIssue?: number | string
-  totalSharesIssued?: number | string
-  market_cap?: number | string
-  marketCap?: number | string
-}
-
-interface StatisticsEnvelope {
-  success?: boolean
-  data?: StatisticsRow[]
-  rows?: StatisticsRow[]
-  statistics?: StatisticsRow[]
+interface PriceRow {
+  [key: string]: unknown
 }
 
 interface NormalizedStatisticsRow {
@@ -56,16 +20,12 @@ interface NormalizedStatisticsRow {
 }
 
 const statisticsCache = new Map<string, NormalizedStatisticsRow[]>()
-const symbolToCompanyIdCache = new Map<string, number>()
 
-interface MarketDataSymbolRow {
-  company?: {
-    id?: number | string
-    symbol?: string
-  }
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
-function toNumber(value: number | string | null | undefined): number {
+function toNumber(value: unknown): number {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0
   if (typeof value === "string") {
     const parsed = Number(value.replace(/,/g, "").trim())
@@ -74,8 +34,92 @@ function toNumber(value: number | string | null | undefined): number {
   return 0
 }
 
-function normalizeTradeDate(value: string): string {
-  const source = value.trim()
+function normalizeKey(key: string): string {
+  return key.toLowerCase().replace(/[_\-\s]/g, "")
+}
+
+// The investor portal price feed has no publicly documented field names, so
+// fields are resolved through ordered regex candidates against normalized keys.
+const DATE_MATCHERS = [
+  /^tradedate$/,
+  /^sessiondate$/,
+  /^businessdate$/,
+  /^pricedate$/,
+  /^date$/,
+  /date$/,
+]
+
+const OPEN_MATCHERS = [
+  /^(opening|open)(ing)?(price)?$/,
+  /^first(trade)?price$/,
+  /^open/,
+]
+
+const HIGH_MATCHERS = [
+  /^(high|highest)(price)?$/,
+  /^highprice$/,
+  /^dayhigh/,
+  /^high/,
+]
+
+const LOW_MATCHERS = [
+  /^(low|lowest)(price)?$/,
+  /^lowprice$/,
+  /^daylow/,
+  /^low/,
+]
+
+const CLOSE_MATCHERS = [
+  /^(closing|closed|close)(ing)?price$/,
+  /^closingprice$/,
+  /^lasttraded?price$/,
+  /^lasttrad(e|ed)price$/,
+  /^closeprice$/,
+  /^lastprice$/,
+  /^(closing|closed|close|last)$/,
+  /^price$/,
+  /price$/,
+  /^last/,
+]
+
+const VOLUME_MATCHERS = [
+  /^(traded)?volume$/,
+  /volume/,
+  /^tradedshares$/,
+  /^tradedquantity$/,
+  /^dealings?quantity$/,
+]
+
+const TURNOVER_MATCHERS = [
+  /^turnover$/,
+  /turnover/,
+  /^tradedvalue$/,
+  /^turn_?over$/,
+]
+
+function extractValue(
+  row: PriceRow,
+  matchers: RegExp[]
+): string | number | null | undefined {
+  const entries = Object.entries(row)
+
+  for (const matcher of matchers) {
+    for (const [rawKey, rawValue] of entries) {
+      if (matcher.test(normalizeKey(rawKey))) {
+        if (rawValue === null || rawValue === undefined || rawValue === "") continue
+        if (typeof rawValue === "number" || typeof rawValue === "string") return rawValue
+        return String(rawValue)
+      }
+    }
+  }
+
+  return undefined
+}
+
+function normalizeTradeDate(value: unknown): string {
+  if (value === null || value === undefined) return ""
+
+  const source = String(value).trim()
   if (!source) return ""
 
   const isoSource = source.includes("T") ? source.slice(0, 10) : source
@@ -97,68 +141,72 @@ function normalizeTradeDate(value: string): string {
 }
 
 function dateToTimestamp(dateStr: string): number {
-  const normalized = normalizeTradeDate(dateStr)
-  if (!normalized) return Number.NaN
-  const parsed = Date.parse(`${normalized}T00:00:00Z`)
+  const parsed = Date.parse(`${dateStr}T00:00:00Z`)
   return Number.isNaN(parsed) ? Number.NaN : parsed
 }
 
-function isSuccessPayload(payload: unknown) {
-  if (!payload || typeof payload !== "object") return true
-  if (!("success" in payload)) return true
-  return (payload as StatisticsEnvelope).success !== false
+function normalizeDays(daysParam: string | null): number {
+  const parsed = Number(daysParam ?? "")
+  if (!Number.isFinite(parsed) || parsed <= 0) return 365
+  return Math.min(5475, Math.max(1, Math.round(parsed)))
 }
 
-function extractRows(payload: unknown): StatisticsRow[] {
-  if (Array.isArray(payload)) return payload as StatisticsRow[]
-  if (!payload || typeof payload !== "object") return []
+function extractRows(payload: unknown): PriceRow[] {
+  if (Array.isArray(payload)) return payload.filter(isObject)
+  if (!isObject(payload)) return []
 
-  const envelope = payload as StatisticsEnvelope
-  if (Array.isArray(envelope.data)) return envelope.data
-  if (Array.isArray(envelope.rows)) return envelope.rows
-  if (Array.isArray(envelope.statistics)) return envelope.statistics
+  const containerKeys = ["data", "content", "rows", "items", "prices", "results", "records"]
+
+  for (const key of containerKeys) {
+    const value = payload[key]
+    if (Array.isArray(value)) return value.filter(isObject)
+    if (isObject(value)) {
+      for (const innerKey of containerKeys) {
+        const inner = value[innerKey]
+        if (Array.isArray(inner)) return inner.filter(isObject)
+      }
+    }
+  }
+
   return []
 }
 
-function normalizeRows(rows: StatisticsRow[], defaultCompany: string): NormalizedStatisticsRow[] {
+function normalizeRows(rows: PriceRow[], defaultCompany: string): NormalizedStatisticsRow[] {
   const byDate = new Map<string, NormalizedStatisticsRow>()
 
   rows.forEach((row, index) => {
-    const dateRaw = row.trade_date ?? row.tradeDate ?? row.date ?? ""
-    const tradeDate = normalizeTradeDate(dateRaw)
+    const tradeDate = normalizeTradeDate(extractValue(row, DATE_MATCHERS))
     if (!tradeDate) return
 
-    const close = toNumber(row.closing_price ?? row.closingPrice ?? row.close ?? row.price)
-    const open = toNumber(row.opening_price ?? row.openingPrice ?? row.open)
-    const highRaw = toNumber(row.high ?? row.high_price ?? row.highPrice)
-    const lowRaw = toNumber(row.low ?? row.low_price ?? row.lowPrice)
+    const close = toNumber(extractValue(row, CLOSE_MATCHERS))
+    const open = toNumber(extractValue(row, OPEN_MATCHERS))
+    const highRaw = toNumber(extractValue(row, HIGH_MATCHERS))
+    const lowRaw = toNumber(extractValue(row, LOW_MATCHERS))
 
     const base = close > 0 ? close : open
     if (base <= 0) return
 
     const openingPrice = open > 0 ? open : base
     const closingPrice = close > 0 ? close : openingPrice
-    const high = highRaw > 0 ? Math.max(highRaw, openingPrice, closingPrice) : Math.max(openingPrice, closingPrice)
-    const low = lowRaw > 0 ? Math.min(lowRaw, openingPrice, closingPrice) : Math.min(openingPrice, closingPrice)
+    const high =
+      highRaw > 0 ? Math.max(highRaw, openingPrice, closingPrice) : Math.max(openingPrice, closingPrice)
+    const low =
+      lowRaw > 0 ? Math.min(lowRaw, openingPrice, closingPrice) : Math.min(openingPrice, closingPrice)
 
-    const normalized: NormalizedStatisticsRow = {
-      id: toNumber(row.id ?? index + 1) || index + 1,
+    byDate.set(tradeDate, {
+      id: index + 1,
       trade_date: tradeDate,
       company:
-        (row.company ?? row.symbol ?? row.security_code ?? row.securityCode ?? defaultCompany)
-          ?.toString()
-          .trim() || defaultCompany,
-      turnover: toNumber(row.turnover ?? row.turn_over ?? row.turnOver),
-      volume: toNumber(row.volume),
+        (row.company ?? row.fullName ?? defaultCompany)?.toString().trim() || defaultCompany,
+      turnover: toNumber(extractValue(row, TURNOVER_MATCHERS)),
+      volume: toNumber(extractValue(row, VOLUME_MATCHERS)),
       high,
       low,
       opening_price: openingPrice,
       closing_price: closingPrice,
-      shares_in_issue: toNumber(row.shares_in_issue ?? row.sharesInIssue ?? row.totalSharesIssued),
+      shares_in_issue: toNumber(row.shares_in_issue ?? row.sharesInIssue),
       market_cap: toNumber(row.market_cap ?? row.marketCap),
-    }
-
-    byDate.set(tradeDate, normalized)
+    })
   })
 
   return Array.from(byDate.values()).sort(
@@ -166,122 +214,58 @@ function normalizeRows(rows: StatisticsRow[], defaultCompany: string): Normalize
   )
 }
 
-function normalizeDays(daysParam: string): number {
-  const parsed = Number(daysParam)
-  if (!Number.isFinite(parsed) || parsed <= 0) return 365
-  return Math.min(5475, Math.max(1, Math.round(parsed)))
-}
-
-async function resolveCompanyIdFromSymbol(symbolRaw: string): Promise<number | null> {
-  const symbol = symbolRaw.trim().toUpperCase()
-  if (!symbol) return null
-
-  const cached = symbolToCompanyIdCache.get(symbol)
-  if (cached && cached > 0) return cached
-
-  const result = await fetchJsonWithTimeout<MarketDataSymbolRow[]>(
-    "https://api.dse.co.tz/api/market-data?isBond=false",
-    { next: { revalidate: 60 }, timeoutMs: 9000 }
-  )
-
-  if (!result.ok || !Array.isArray(result.data)) return null
-
-  for (const row of result.data) {
-    const rowSymbol = row.company?.symbol?.trim().toUpperCase()
-    const rowId = toNumber(row.company?.id)
-    if (rowSymbol && rowId > 0) {
-      symbolToCompanyIdCache.set(rowSymbol, rowId)
-    }
-  }
-
-  const resolved = symbolToCompanyIdCache.get(symbol)
-  return resolved && resolved > 0 ? resolved : null
+function jsonResponse(payload: NormalizedStatisticsRow[], options: {
+  stale: boolean
+  source: string
+}): NextResponse {
+  return NextResponse.json(payload, {
+    status: 200,
+    headers: {
+      "x-dse-stale": options.stale ? "1" : "0",
+      "x-dse-source": options.source,
+      "cache-control": options.stale ? "no-store" : "public, max-age=30, stale-while-revalidate=120",
+    },
+  })
 }
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
-  const requestedCompanyId = Number(searchParams.get("companyId") ?? "")
-  const symbol = (searchParams.get("symbol") ?? "").trim()
-  const days = normalizeDays(searchParams.get("days") ?? "365")
-  let companyId = Number.isFinite(requestedCompanyId) && requestedCompanyId > 0 ? requestedCompanyId : 0
+  const symbol = (searchParams.get("symbol") ?? "").trim().toUpperCase()
+  const days = normalizeDays(searchParams.get("days"))
 
-  if (companyId <= 0 && symbol) {
-    const resolvedCompanyId = await resolveCompanyIdFromSymbol(symbol)
-    if (resolvedCompanyId && resolvedCompanyId > 0) {
-      companyId = resolvedCompanyId
-    }
+  if (!/^[A-Z0-9.\-]{1,20}$/.test(symbol)) {
+    return jsonResponse([], { stale: true, source: "missing-symbol" })
   }
 
-  if (!Number.isFinite(companyId) || companyId <= 0) {
-    return NextResponse.json([], { status: 200 })
-  }
+  const cacheKey = `${symbol}:${days}`
 
-  const cacheKey = `${companyId}:${days}`
-  const defaultCompany = symbol || String(companyId)
-
+  // Public DSE website feed - no authentication required.
+  let result: Awaited<ReturnType<typeof fetchJsonWithTimeout<unknown>>> | null = null
   try {
-    const result = await fetchJsonWithTimeout<unknown>(
-      `https://api.dse.co.tz/api/market-data/statistics?companyId=${encodeURIComponent(String(companyId))}&days=${encodeURIComponent(String(days))}`,
+    result = await fetchJsonWithTimeout<unknown>(
+      `https://dse.co.tz/api/get/market/prices/for/range/duration` +
+        `?security_code=${encodeURIComponent(symbol)}&days=${days}&class=EQUITY`,
       { next: { revalidate: 60 }, timeoutMs: 9000 }
     )
+  } catch {
+    result = null
+  }
 
-    const rows =
-      result.ok && isSuccessPayload(result.data)
-        ? extractRows(result.data)
-        : []
-
-    const normalized = normalizeRows(rows, defaultCompany)
+  if (result && result.ok) {
+    const normalized = normalizeRows(extractRows(result.data), symbol)
     if (normalized.length > 0) {
       statisticsCache.set(cacheKey, normalized)
-      return NextResponse.json(normalized, {
-        status: 200,
-        headers: {
-          "x-dse-stale": "0",
-          "x-dse-source": "statistics",
-        },
-      })
+      return jsonResponse(normalized, { stale: false, source: "dse-public-prices" })
     }
-
-    const cached = statisticsCache.get(cacheKey)
-    if (cached) {
-      return NextResponse.json(cached, {
-        status: 200,
-        headers: {
-          "x-dse-stale": "1",
-          "x-dse-source": "cache",
-          "cache-control": "no-store",
-        },
-      })
-    }
-
-    return NextResponse.json([], {
-      status: 200,
-      headers: {
-        "x-dse-stale": "1",
-        "x-dse-source": "empty",
-        "cache-control": "no-store",
-      },
-    })
-  } catch {
-    const cached = statisticsCache.get(cacheKey)
-    if (cached) {
-      return NextResponse.json(cached, {
-        status: 200,
-        headers: {
-          "x-dse-stale": "1",
-          "x-dse-source": "cache",
-          "cache-control": "no-store",
-        },
-      })
-    }
-
-    return NextResponse.json([], {
-      status: 200,
-      headers: {
-        "x-dse-stale": "1",
-        "x-dse-source": "error",
-        "cache-control": "no-store",
-      },
-    })
   }
+
+  const cached = statisticsCache.get(cacheKey)
+  if (cached) {
+    return jsonResponse(cached, { stale: true, source: "cache" })
+  }
+
+  return jsonResponse([], {
+    stale: true,
+    source: result ? (result.ok ? "empty" : "error") : "error",
+  })
 }

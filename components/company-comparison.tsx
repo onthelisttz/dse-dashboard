@@ -191,6 +191,12 @@ export function CompanyComparison({
     return mapping
   }, [companies])
 
+  const symbolByCompanyIdRef = useRef(symbolByCompanyId)
+
+  useEffect(() => {
+    symbolByCompanyIdRef.current = symbolByCompanyId
+  }, [symbolByCompanyId])
+
   const colorByCompanyId = useMemo(() => {
     const mapping: Record<number, string> = {}
     companies.forEach((company, index) => {
@@ -216,6 +222,8 @@ export function CompanyComparison({
         companyId: String(companyId),
         days: String(days),
       })
+      const symbol = symbolByCompanyIdRef.current[companyId]
+      if (symbol) params.set("symbol", symbol)
       const res = await fetch(`/api/market-data/statistics?${params.toString()}`)
       if (!res.ok) throw new Error("Failed to fetch statistics")
       const raw = await res.json()

@@ -67,6 +67,7 @@ export function useStatistics(companyId: number, days: number, symbol?: string) 
     days: String(days),
   })
   if (symbol) {
+    primaryParams.set("symbol", symbol)
     fallbackParams.set("symbol", symbol)
   }
 

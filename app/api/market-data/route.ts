@@ -72,6 +72,10 @@ function toNumber(value: number | string | null | undefined): number {
   return 0
 }
 
+function round2(value: number): number {
+  return Number.isFinite(value) ? Math.round(value * 100) / 100 : 0
+}
+
 function normalizeTradeDate(value: string | null | undefined): string | null {
   if (!value) return null
   const source = value.trim()
@@ -102,12 +106,12 @@ function buildFallbackFromOverview(overviewRows: OverviewRow[]) {
     .map((row, index) => {
       const symbol = row.company?.trim() || `SYM${index + 1}`
       const marketPrice = toNumber(row.price)
-      const percentageChange = toNumber(row.change)
+      const percentageChange = round2(toNumber(row.change))
       const openingEstimate =
         marketPrice > 0 && Number.isFinite(percentageChange)
           ? marketPrice / (1 + percentageChange / 100)
           : marketPrice
-      const openingPrice = openingEstimate > 0 ? openingEstimate : marketPrice
+      const openingPrice = round2(openingEstimate > 0 ? openingEstimate : marketPrice)
 
       return {
         id: index + 1,
@@ -135,7 +139,7 @@ function buildFallbackFromOverview(overviewRows: OverviewRow[]) {
         openingPrice,
         change: percentageChange,
         percentageChange,
-        changeValue: marketPrice - openingPrice,
+        changeValue: round2(marketPrice - openingPrice),
         marketCap: 0,
         high: Math.max(marketPrice, openingPrice),
         low: Math.min(marketPrice, openingPrice),
@@ -191,14 +195,15 @@ function normalizeBaseRows(baseData: BaseMarketItem[]) {
           ? Math.min(lowRaw, openingPrice, marketPrice)
           : Math.min(openingPrice, marketPrice)
 
-      const explicitPct = toNumber(item.percentageChange ?? item.changePercentage)
-      const computedPct =
+      const explicitPct = round2(toNumber(item.percentageChange ?? item.changePercentage))
+      const computedPct = round2(
         openingPrice > 0 ? ((marketPrice - openingPrice) / openingPrice) * 100 : 0
+      )
       const percentageChange = explicitPct !== 0 ? explicitPct : computedPct
 
       const explicitChange = toNumber(item.change)
       const changeValue =
-        openingPrice > 0 ? marketPrice - openingPrice : explicitChange
+        openingPrice > 0 ? round2(marketPrice - openingPrice) : round2(explicitChange)
 
       const minLimitRaw = toNumber(item.minLimit)
       const maxLimitRaw = toNumber(item.maxLimit)
