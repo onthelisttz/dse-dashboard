@@ -565,7 +565,8 @@ export function PriceChart({
     return targetPrice >= currentReferencePrice ? "above" : "below"
   }, [alertTargetPrice, currentReferencePrice])
 
-  const chartHeight = isFullscreen ? "calc(100vh - 440px)" : "350px"
+  const chartAreaRef = useRef<HTMLDivElement | null>(null)
+  const chartHeight = isFullscreen ? "100%" : "350px"
   const isDark = resolvedTheme === "dark"
   const upColor = "rgb(34, 197, 94)"
   const downColor = "rgb(239, 68, 68)"
@@ -1052,9 +1053,22 @@ export function PriceChart({
         width: container.clientWidth,
         height: container.clientHeight,
       })
+      clampPriceScaleToZero()
+      requestOverlaySync()
     })
-    return () => window.cancelAnimationFrame(frame)
-  }, [isFullscreen, chartData.length, chartHeight])
+    const timeout = window.setTimeout(() => {
+      chartRef.current?.applyOptions({
+        width: container.clientWidth,
+        height: container.clientHeight,
+      })
+      clampPriceScaleToZero()
+      requestOverlaySync()
+    }, 150)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.clearTimeout(timeout)
+    }
+  }, [isFullscreen, chartData.length, chartHeight, clampPriceScaleToZero, requestOverlaySync])
 
   useEffect(() => {
     if (!chartRef.current || !chartContainerRef.current) return
@@ -1150,10 +1164,10 @@ export function PriceChart({
     <div
       className={cn(
         isFullscreen &&
-          "fixed inset-0 z-[70] overflow-auto bg-background p-3 sm:p-4"
+          "fixed inset-0 z-40 flex h-dvh flex-col overflow-hidden bg-background p-3 sm:p-4"
       )}
     >
-      <Card className={cn("border-border bg-card", isFullscreen && "min-h-full")}>
+      <Card className={cn("border-border bg-card", isFullscreen && "grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]")}>
         <CardHeader className="space-y-3 pb-2">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
             <div>
@@ -1369,11 +1383,23 @@ export function PriceChart({
             {alertError && <span className="text-[11px] text-loss">{alertError}</span>}
           </div>
         </CardHeader>
-        <CardContent className="px-0 pb-4 sm:px-6">
-          <div className="relative">
+        <CardContent
+          className={cn(
+            "px-0 pb-4 sm:px-6",
+            isFullscreen && "min-h-0"
+          )}
+        >
+          <div
+            ref={chartAreaRef}
+            className={cn("relative", isFullscreen && "h-full min-h-0")}
+          >
             <div
               ref={chartContainerRef}
-              className={cn("w-full", isPlacingAlert && chartData.length > 0 && "cursor-crosshair")}
+              className={cn(
+                "w-full",
+                isPlacingAlert && chartData.length > 0 && "cursor-crosshair",
+                isFullscreen && "h-full min-h-0"
+              )}
               style={{ height: chartHeight }}
             />
 
