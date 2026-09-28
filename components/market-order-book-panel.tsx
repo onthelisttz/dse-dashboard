@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { X } from "lucide-react"
+import { cn } from "@/lib/utils"
 import type { MarketDataItem } from "@/lib/types"
 
 interface MarketOrderRow {
@@ -25,8 +26,14 @@ interface MarketOrderRow {
 }
 
 interface MarketOrdersPayload {
+  symbol: string
   bestSellPrice: number
   bestBuyPrice: number
+  spread: number
+  midPrice: number
+  bookState: string
+  stale: boolean
+  lastUpdatedAt: string | null
   orders: MarketOrderRow[]
 }
 
@@ -69,7 +76,8 @@ function formatPrice(value: number | null | undefined): string {
 }
 
 export function MarketOrderBookPanel({ company, isOpen, onClose }: MarketOrderBookPanelProps) {
-  const orderBookKey = isOpen && company ? `/api/market-orders/companies/${company.company.id}` : null
+  const orderBookKey =
+    isOpen && company ? `/api/order-book/${encodeURIComponent(company.company.symbol)}` : null
 
   const {
     data: orderBookData,
@@ -79,7 +87,7 @@ export function MarketOrderBookPanel({ company, isOpen, onClose }: MarketOrderBo
   } = useSWR<MarketOrdersPayload>(orderBookKey, orderBookFetcher, {
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
-    refreshInterval: isOpen ? 60000 : 0,
+    refreshInterval: isOpen ? 30000 : 0,
     dedupingInterval: 5000,
   })
 
@@ -88,11 +96,9 @@ export function MarketOrderBookPanel({ company, isOpen, onClose }: MarketOrderBo
     return orders.reduce(
       (acc, row) => ({
         buyQuantity: acc.buyQuantity + (row.buyQuantity > 0 ? row.buyQuantity : 0),
-        buyPrice: acc.buyPrice + (row.buyPrice > 0 ? row.buyPrice : 0),
-        sellPrice: acc.sellPrice + (row.sellPrice > 0 ? row.sellPrice : 0),
         sellQuantity: acc.sellQuantity + (row.sellQuantity > 0 ? row.sellQuantity : 0),
       }),
-      { buyQuantity: 0, buyPrice: 0, sellPrice: 0, sellQuantity: 0 }
+      { buyQuantity: 0, sellQuantity: 0 }
     )
   }, [orderBookData?.orders])
 
@@ -154,7 +160,7 @@ export function MarketOrderBookPanel({ company, isOpen, onClose }: MarketOrderBo
 
           {orderBookError ? (
             <div className="rounded-lg border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
-              Failed to load order book.
+              {orderBookError.message || "Failed to load order book."}
             </div>
           ) : (
             <Table containerClassName="min-h-0 flex-1 overflow-auto rounded-md border border-border">
@@ -186,10 +192,10 @@ export function MarketOrderBookPanel({ company, isOpen, onClose }: MarketOrderBo
                     ))
                   : orderBookData?.orders?.map((order, index) => (
                       <TableRow key={`order-${index}`} className="border-border">
-                        <TableCell className="text-sm text-gain">{formatCellValue(order.buyQuantity)}</TableCell>
-                        <TableCell className="text-right text-sm text-gain">{formatCellValue(order.buyPrice)}</TableCell>
-                        <TableCell className="text-right text-sm text-loss">{formatCellValue(order.sellPrice)}</TableCell>
-                        <TableCell className="text-right text-sm text-loss">{formatCellValue(order.sellQuantity)}</TableCell>
+                        <TableCell className="text-xs text-gain">{formatCellValue(order.buyQuantity)}</TableCell>
+                        <TableCell className="text-right text-xs text-gain">{formatCellValue(order.buyPrice)}</TableCell>
+                        <TableCell className="text-right text-xs text-loss">{formatCellValue(order.sellPrice)}</TableCell>
+                        <TableCell className="text-right text-xs text-loss">{formatCellValue(order.sellQuantity)}</TableCell>
                       </TableRow>
                     )) ?? null}
                 {!orderBookLoading &&
@@ -204,14 +210,32 @@ export function MarketOrderBookPanel({ company, isOpen, onClose }: MarketOrderBo
               </TableBody>
               <TableFooter className="sticky bottom-0 z-10 border-t border-border bg-card/95 backdrop-blur">
                 <TableRow className="border-border hover:bg-transparent">
-                  <TableCell className="font-semibold text-gain">Total {formatCellValue(columnTotals.buyQuantity)}</TableCell>
-                  <TableCell className="text-right font-semibold text-gain">{formatCellValue(columnTotals.buyPrice)}</TableCell>
-                  <TableCell className="text-right font-semibold text-loss">{formatCellValue(columnTotals.sellPrice)}</TableCell>
-                  <TableCell className="text-right font-semibold text-loss">{formatCellValue(columnTotals.sellQuantity)}</TableCell>
+                  <TableCell className="text-xs font-semibold text-gain">Total {formatCellValue(columnTotals.buyQuantity)}</TableCell>
+                  <TableCell className="text-right text-xs font-semibold text-gain">{formatPrice(bestBuyPrice)}</TableCell>
+                  <TableCell className="text-right text-xs font-semibold text-loss">{formatPrice(bestSellPrice)}</TableCell>
+                  <TableCell className="text-right text-xs font-semibold text-loss">{formatCellValue(columnTotals.sellQuantity)}</TableCell>
                 </TableRow>
               </TableFooter>
             </Table>
           )}
+
+          <div className="mt-2 flex items-center justify-between text-xs">
+            <span className="text-gain">
+              Spread {orderBookData?.spread ? formatPrice(orderBookData.spread) : "-"}
+            </span>
+            <span
+              className={cn(
+                "font-medium",
+                orderBookData?.stale ? "text-loss" : "text-gain"
+              )}
+            >
+              {orderBookData?.stale
+                ? "Stale book"
+                : orderBookData?.bookState
+                  ? orderBookData.bookState
+                  : ""}
+            </span>
+          </div>
         </CardContent>
       </Card>
     </aside>

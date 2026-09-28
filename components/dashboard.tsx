@@ -31,6 +31,7 @@ interface DashboardProps {
 }
 
 const REFRESH_COOLDOWN_MS = 30_000
+const DEFAULT_COMPANY_SYMBOL = "TBL"
 
 function formatCompactNumber(value: number | null | undefined, withCurrency = false): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return "N/A"
@@ -78,7 +79,7 @@ export function Dashboard({ user }: DashboardProps) {
     updateAlert,
     deleteAlert,
   } = usePriceAlerts()
-  const [selectedCompanyId, setSelectedCompanyId] = useState<number>(12) // TBL default
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number>(0)
   const [orderBookDetailsCompanyId, setOrderBookDetailsCompanyId] = useState<number | null>(null)
   const [timeframe, setTimeframe] = useState<"daily" | "weekly">("daily")
   const [days, setDays] = useState<number>(365)
@@ -90,10 +91,11 @@ export function Dashboard({ user }: DashboardProps) {
 
   useEffect(() => {
     if (companies.length === 0) return
-    const exists = companies.some((item) => item.company.id === selectedCompanyId)
-    if (!exists) {
-      setSelectedCompanyId(companies[0].company.id)
-    }
+    if (companies.some((item) => item.company.id === selectedCompanyId)) return
+
+    const preferred =
+      companies.find((item) => item.company.symbol === DEFAULT_COMPANY_SYMBOL) ?? companies[0]
+    setSelectedCompanyId(preferred.company.id)
   }, [companies, selectedCompanyId])
 
   const selectedCompany = useMemo(
@@ -329,6 +331,7 @@ export function Dashboard({ user }: DashboardProps) {
               onShowAlertsOnChartChange={setShowAlertsOnChart}
               isOrderBookOpen={orderBookDetailsCompanyId === selectedCompanyId}
               onOpenOrderBook={() => setOrderBookDetailsCompanyId(selectedCompanyId)}
+              isOrderBookPanelOpen={isDetailsPanelOpen}
               onCreateAlert={createAlert}
               onUpdateAlert={updateAlert}
               onDeleteAlert={deleteAlert}

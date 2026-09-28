@@ -1,51 +1,28 @@
 import { NextResponse } from "next/server"
-import { fetchJsonWithTimeout } from "@/lib/server-fetch"
+import {
+  SNAPSHOT_SUCCESS_CODE,
+  extractSnapshotRows,
+  fetchMarketWatchSnapshot,
+  normalizeSymbol,
+  toNumber,
+} from "@/lib/dse-investor"
 
-interface BaseMarketItem {
-  id?: number
-  company?: {
-    id?: number
-    symbol?: string
-  }
-  marketPrice?: number | string
-  openingPrice?: number | string
-  change?: number | string
-  percentageChange?: number | string
-  changePercentage?: number | string
-}
-
-function toNumber(value: number | string | null | undefined): number {
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0
-  if (typeof value === "string") {
-    const parsed = Number(value.replace(/,/g, "").trim())
-    return Number.isFinite(parsed) ? parsed : 0
-  }
-  return 0
-}
-
-function mapToLivePriceRows(rows: BaseMarketItem[]) {
+function mapToLivePriceRows(
+  rows: ReturnType<typeof extractSnapshotRows>
+) {
   return rows
     .map((item, index) => {
-      const company = item.company?.symbol?.trim() || `SYM${index + 1}`
+      const company = normalizeSymbol(item.symbol) || `SYM${index + 1}`
       if (!company) return null
 
-      const price = toNumber(item.marketPrice)
-      const openingPrice = toNumber(item.openingPrice)
-      const explicitChange = toNumber(item.change)
-      const explicitPct = toNumber(item.percentageChange ?? item.changePercentage)
-
-      let change = explicitChange
-      if (change === 0 && openingPrice > 0 && price > 0) {
-        change = ((price - openingPrice) / openingPrice) * 100
-      } else if (change === 0 && explicitPct !== 0) {
-        change = explicitPct
-      }
+      const price = toNumber(item.lastPrice)
+      const percentageChange = toNumber(item.priceChangePct)
 
       return {
-        id: toNumber(item.company?.id ?? item.id ?? index + 1) || index + 1,
+        id: index + 1,
         company,
         price,
-        change,
+        change: percentageChange,
       }
     })
     .filter((item): item is NonNullable<typeof item> => item != null)
@@ -55,15 +32,9 @@ let cachedLivePrices: { success: boolean; data: Array<{ id: number; company: str
 
 export async function GET() {
   try {
-    const result = await fetchJsonWithTimeout<BaseMarketItem[]>(
-      "https://api.dse.co.tz/api/market-data?isBond=false",
-      {
-        next: { revalidate: 30 },
-        timeoutMs: 7000,
-      }
-    )
+    const result = await fetchMarketWatchSnapshot(30)
 
-    if (!result.ok || !Array.isArray(result.data)) {
+    if (!result.ok || result.data?.code !== SNAPSHOT_SUCCESS_CODE) {
       if (cachedLivePrices) {
         return NextResponse.json(cachedLivePrices, {
           status: 200,
@@ -87,7 +58,7 @@ export async function GET() {
       )
     }
 
-    const mapped = mapToLivePriceRows(result.data)
+    const mapped = mapToLivePriceRows(extractSnapshotRows(result.data))
     const payload = { success: true, data: mapped }
     cachedLivePrices = payload
 
@@ -95,7 +66,7 @@ export async function GET() {
       status: 200,
       headers: {
         "x-dse-stale": "0",
-        "x-dse-source": "market-data",
+        "x-dse-source": "market-watch-snapshot",
       },
     })
   } catch {

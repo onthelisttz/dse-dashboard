@@ -1,5 +1,13 @@
 import { NextResponse } from "next/server"
 import { fetchJsonWithTimeout } from "@/lib/server-fetch"
+import {
+  SNAPSHOT_SUCCESS_CODE,
+  SnapshotRow,
+  extractSnapshotRows,
+  extractSnapshotLastRefreshedAt,
+  fetchMarketWatchSnapshot,
+  toNumber,
+} from "@/lib/dse-investor"
 
 interface StatusResponse {
   success: boolean
@@ -19,17 +27,6 @@ interface OverviewResponse {
   m_cap_aggregate?: string
 }
 
-interface BaseMarketItem {
-  marketPrice?: number | string
-  volume?: number | string
-  marketCap?: number | string
-  turnover?: number | string
-  turn_over?: number | string
-  deals?: number | string
-  lastTradeDate?: string | null
-  last_trade_date?: string | null
-}
-
 interface MarketMetaPayload {
   marketOpen: boolean
   statusText: string
@@ -41,15 +38,6 @@ interface MarketMetaPayload {
     mCapAggregate: number
   } | null
   updatedAt: string
-}
-
-function parseNumber(value: number | string | undefined | null): number {
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0
-  if (typeof value === "string") {
-    const parsed = Number(value.replace(/,/g, "").trim())
-    return Number.isFinite(parsed) ? parsed : 0
-  }
-  return 0
 }
 
 function normalizeTradeDate(value: string | null | undefined): string | null {
@@ -77,7 +65,7 @@ function dateToTimestamp(dateStr: string): number {
   return Number.isNaN(parsed) ? Number.NaN : parsed
 }
 
-function aggregateMetaFromMarketData(rows: BaseMarketItem[]): {
+function aggregateMetaFromMarketData(rows: SnapshotRow[]): {
   volume: number
   turnover: number
   deals: number
@@ -94,26 +82,17 @@ function aggregateMetaFromMarketData(rows: BaseMarketItem[]): {
   let latestTimestamp = Number.NEGATIVE_INFINITY
 
   rows.forEach((row) => {
-    const itemVolume = parseNumber(row.volume)
-    const itemMarketPrice = parseNumber(row.marketPrice)
+    const itemVolume = toNumber(row.volume)
+    const itemMarketPrice = toNumber(row.lastPrice)
 
     volume += itemVolume
-    mCapAggregate += parseNumber(row.marketCap)
+    mCapAggregate += toNumber(row.marketCap)
 
-    const itemTurnover = parseNumber(row.turnover ?? row.turn_over)
-    if (itemTurnover > 0) {
-      turnover += itemTurnover
-    } else if (itemVolume > 0 && itemMarketPrice > 0) {
+    if (itemVolume > 0 && itemMarketPrice > 0) {
       turnover += itemVolume * itemMarketPrice
     }
 
-    const itemDeals = parseNumber(row.deals)
-    if (itemDeals > 0) {
-      deals += itemDeals
-      hasDeals = true
-    }
-
-    const normalizedDate = normalizeTradeDate(row.lastTradeDate ?? row.last_trade_date)
+    const normalizedDate = normalizeTradeDate(row.updatedAt)
     if (!normalizedDate) return
     const timestamp = dateToTimestamp(normalizedDate)
     if (!Number.isFinite(timestamp)) return
@@ -138,25 +117,23 @@ let cachedMarketMeta: MarketMetaPayload | null = null
 export async function GET() {
   try {
     const [marketDataResult, statusResult] = await Promise.all([
-      fetchJsonWithTimeout<BaseMarketItem[]>("https://api.dse.co.tz/api/market-data?isBond=false", {
-        next: { revalidate: 30 },
-        timeoutMs: 7000,
-      }),
+      fetchMarketWatchSnapshot(30),
       fetchJsonWithTimeout<StatusResponse>("https://data.dse.co.tz/api/is/market/closed", {
         next: { revalidate: 60 },
         timeoutMs: 6000,
       }),
     ])
 
+    const snapshotOk =
+      marketDataResult.ok && marketDataResult.data?.code === SNAPSHOT_SUCCESS_CODE
     const statusText = statusResult.ok
       ? statusResult.data?.data ?? "Unknown"
       : cachedMarketMeta?.statusText ?? "Unknown"
     const marketOpen = !/closed/i.test(statusText)
 
-    const baseRows =
-      marketDataResult.ok && Array.isArray(marketDataResult.data)
-        ? marketDataResult.data
-        : []
+    const baseRows = snapshotOk
+      ? extractSnapshotRows(marketDataResult.data)
+      : []
     const aggregated = aggregateMetaFromMarketData(baseRows)
 
     let lastTradeDate = aggregated.lastTradeDate
@@ -201,19 +178,19 @@ export async function GET() {
           volume:
             overview && overview.volume > 0
               ? overview.volume
-              : parseNumber(fallbackOverview.volume),
+              : toNumber(fallbackOverview.volume),
           turnover:
             overview && overview.turnover > 0
               ? overview.turnover
-              : parseNumber(fallbackOverview.turn_over),
+              : toNumber(fallbackOverview.turn_over),
           deals:
             overview && overview.deals > 0
               ? overview.deals
-              : parseNumber(fallbackOverview.deals),
+              : toNumber(fallbackOverview.deals),
           mCapAggregate:
             overview && overview.mCapAggregate > 0
               ? overview.mCapAggregate
-              : parseNumber(fallbackOverview.m_cap_aggregate),
+              : toNumber(fallbackOverview.m_cap_aggregate),
         }
       }
     }
@@ -223,7 +200,9 @@ export async function GET() {
       statusText,
       lastTradeDate,
       overview,
-      updatedAt: new Date().toISOString(),
+      updatedAt:
+        (snapshotOk ? extractSnapshotLastRefreshedAt(marketDataResult.data) : null) ??
+        new Date().toISOString(),
     }
     cachedMarketMeta = payload
 
@@ -231,7 +210,7 @@ export async function GET() {
       status: 200,
       headers: {
         "x-dse-stale": "0",
-        "x-dse-source": "market-data-primary",
+        "x-dse-source": "market-watch-snapshot",
       },
     })
   } catch {

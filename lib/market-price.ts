@@ -1,48 +1,32 @@
-import { fetchJsonWithTimeout } from "@/lib/server-fetch"
-
-interface MarketDataApiRow {
-  company?: {
-    id?: number
-    symbol?: string
-    name?: string
-  }
-  marketPrice?: number | string
-  openingPrice?: number | string
-}
-
-function toNumber(value: number | string | null | undefined): number {
-  if (typeof value === "number") return value
-  if (typeof value === "string") {
-    const parsed = Number(value.replace(/,/g, "").trim())
-    return Number.isFinite(parsed) ? parsed : 0
-  }
-  return 0
-}
+import {
+  SNAPSHOT_SUCCESS_CODE,
+  extractSnapshotRows,
+  fetchMarketWatchSnapshot,
+  normalizeSymbol,
+  toNumber,
+} from "@/lib/dse-investor"
 
 export async function fetchCurrentPriceBySymbol(symbol: string): Promise<number | null> {
-  const result = await fetchJsonWithTimeout<MarketDataApiRow[]>(
-    "https://api.dse.co.tz/api/market-data?isBond=false",
-    {
-      next: { revalidate: 30 },
-      timeoutMs: 6000,
-    }
-  )
+  const target = normalizeSymbol(symbol)
+  if (!target) return null
 
-  if (!result.ok || !Array.isArray(result.data)) {
+  const result = await fetchMarketWatchSnapshot(30)
+  if (!result.ok || result.data?.code !== SNAPSHOT_SUCCESS_CODE) {
     return null
   }
 
-  const rows = result.data
-  const match = rows.find((item) => item?.company?.symbol === symbol)
+  const match = extractSnapshotRows(result.data).find(
+    (item) => normalizeSymbol(item.symbol) === target
+  )
   if (!match) {
     return null
   }
 
-  const marketPrice = toNumber(match.marketPrice)
-  if (marketPrice > 0) {
-    return marketPrice
+  const lastPrice = toNumber(match.lastPrice)
+  if (lastPrice > 0) {
+    return lastPrice
   }
 
-  const openingPrice = toNumber(match.openingPrice)
-  return openingPrice > 0 ? openingPrice : null
+  const bestBid = toNumber(match.bestBidPrice)
+  return bestBid > 0 ? bestBid : null
 }

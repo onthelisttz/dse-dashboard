@@ -71,6 +71,7 @@ interface PriceChartProps {
   onShowAlertsOnChartChange: (visible: boolean) => void
   isOrderBookOpen: boolean
   onOpenOrderBook: () => void
+  isOrderBookPanelOpen?: boolean
   onCreateAlert: (input: CreatePriceAlertInput) => Promise<unknown>
   onUpdateAlert: (alertId: string, patch: UpdatePriceAlertInput) => Promise<unknown>
   onDeleteAlert: (alertId: string) => Promise<void>
@@ -230,6 +231,7 @@ export function PriceChart({
   onShowAlertsOnChartChange,
   isOrderBookOpen,
   onOpenOrderBook,
+  isOrderBookPanelOpen = false,
   onCreateAlert,
   onUpdateAlert,
   onDeleteAlert,
@@ -252,6 +254,10 @@ export function PriceChart({
   const [editingAlertId, setEditingAlertId] = useState<string | null>(null)
   const [, setOverlayVersion] = useState(0)
   const { resolvedTheme } = useTheme()
+
+  const toggleFullscreen = useCallback(() => {
+    setIsFullscreen((prev) => !prev)
+  }, [])
 
   const chartContainerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -1164,10 +1170,17 @@ export function PriceChart({
     <div
       className={cn(
         isFullscreen &&
-          "fixed inset-0 z-40 flex h-dvh flex-col overflow-hidden bg-background p-3 sm:p-4"
+          "fixed inset-0 z-30 flex h-dvh flex-col overflow-hidden bg-background p-3 sm:p-4",
+        isFullscreen && isOrderBookPanelOpen && "lg:pr-[29rem]"
       )}
     >
-      <Card className={cn("border-border bg-card", isFullscreen && "grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]")}>
+      <Card
+        className={cn(
+          "min-w-0 border-border bg-card",
+          isFullscreen &&
+            "grid h-full min-h-0 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)]"
+        )}
+      >
         <CardHeader className="space-y-3 pb-2">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
             <div>
@@ -1255,7 +1268,7 @@ export function PriceChart({
                 type="button"
                 variant="outline"
                 size="icon"
-                onClick={() => setIsFullscreen((prev) => !prev)}
+                onClick={toggleFullscreen}
                 className="h-9 w-9 border-border bg-card"
                 aria-label={isFullscreen ? "Exit fullscreen" : "Open fullscreen"}
                 title={isFullscreen ? "Exit fullscreen" : "Open fullscreen"}
@@ -1385,18 +1398,18 @@ export function PriceChart({
         </CardHeader>
         <CardContent
           className={cn(
-            "px-0 pb-4 sm:px-6",
+            "min-w-0 px-0 pb-4 sm:px-6",
             isFullscreen && "min-h-0"
           )}
         >
           <div
             ref={chartAreaRef}
-            className={cn("relative", isFullscreen && "h-full min-h-0")}
+            className={cn("relative w-full min-w-0", isFullscreen && "h-full min-h-0")}
           >
             <div
               ref={chartContainerRef}
               className={cn(
-                "w-full",
+                "w-full min-w-0 max-w-full",
                 isPlacingAlert && chartData.length > 0 && "cursor-crosshair",
                 isFullscreen && "h-full min-h-0"
               )}

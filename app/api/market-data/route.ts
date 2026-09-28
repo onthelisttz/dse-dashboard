@@ -1,5 +1,15 @@
 import { NextResponse } from "next/server"
 import { fetchJsonWithTimeout } from "@/lib/server-fetch"
+import {
+  SNAPSHOT_SUCCESS_CODE,
+  SnapshotRow,
+  extractSnapshotRows,
+  fetchMarketWatchSnapshot,
+  normalizeSymbol,
+  round2,
+  symbolToId,
+  toNumber,
+} from "@/lib/dse-investor"
 
 interface OverviewRow {
   company: string
@@ -13,67 +23,11 @@ interface OverviewResponse {
   gainers_and_losers?: OverviewRow[]
 }
 
-interface BaseMarketItem {
-  id?: number
-  company?: {
-    id?: number
-    uid?: string
-    name?: string
-    symbol?: string
-    securityId?: string
-    capSize?: number | string
-  }
-  security?: {
-    id?: number
-    symbol?: string
-    securityId?: string
-    securityType?: string
-    securityDesc?: string
-    bestOfferPrice?: number | string
-    bestOfferQuantity?: number | string
-    bestBidPrice?: number | string
-    bestBidQuantity?: number | string
-    totalSharesIssued?: number | string
-  }
-  marketPrice?: number | string
-  openingPrice?: number | string
-  high?: number | string
-  low?: number | string
-  volume?: number | string
-  marketCap?: number | string
-  minLimit?: number | string
-  maxLimit?: number | string
-  bestOfferPrice?: number | string
-  bestOfferQuantity?: number | string
-  bestBidPrice?: number | string
-  bestBidQuantity?: number | string
-  change?: number | string
-  percentageChange?: number | string
-  changePercentage?: number | string
-  turnover?: number | string
-  turn_over?: number | string
-  deals?: number | string
-  lastTradeDate?: string | null
-  last_trade_date?: string | null
-  tradeTime?: string | null
-  trade_time?: string | null
-  lastTradeTime?: string | null
-  last_trade_time?: string | null
-  time?: string | null
-}
-
-function toNumber(value: number | string | null | undefined): number {
-  if (typeof value === "number") return Number.isFinite(value) ? value : 0
-  if (typeof value === "string") {
-    const cleaned = value.replace(/,/g, "").trim()
-    const parsed = Number(cleaned)
-    return Number.isFinite(parsed) ? parsed : 0
-  }
-  return 0
-}
-
-function round2(value: number): number {
-  return Number.isFinite(value) ? Math.round(value * 100) / 100 : 0
+interface SecuritySnapshot {
+  bestOfferPrice: number
+  bestOfferQuantity: number
+  bestBidPrice: number
+  bestBidQuantity: number
 }
 
 function normalizeTradeDate(value: string | null | undefined): string | null {
@@ -156,33 +110,40 @@ function buildFallbackFromOverview(overviewRows: OverviewRow[]) {
     .filter((item) => item.company.symbol.length > 0)
 }
 
-function normalizeBaseRows(baseData: BaseMarketItem[]) {
-  return baseData
-    .map((item, index) => {
-      const symbol =
-        item.company?.symbol?.trim() ||
-        item.security?.symbol?.trim() ||
-        `SYM${index + 1}`
-
+function normalizeSnapshotRows(rows: SnapshotRow[]) {
+  return rows
+    .map((item) => {
+      const symbol = normalizeSymbol(item.symbol)
       if (!symbol) return null
 
-      const id =
-        toNumber(item.company?.id ?? item.id ?? index + 1) ||
-        index + 1
+      const id = symbolToId(symbol)
+      const name =
+        typeof item.name === "string" && item.name.trim().length > 0
+          ? item.name.trim()
+          : symbol
 
-      const openingPriceRaw = toNumber(item.openingPrice)
-      const marketPriceRaw = toNumber(item.marketPrice)
-      const bestBidPrice = toNumber(item.bestBidPrice ?? item.security?.bestBidPrice)
-      const bestOfferPrice = toNumber(item.bestOfferPrice ?? item.security?.bestOfferPrice)
+      const bestBidPrice = toNumber(item.bestBidPrice)
+      const bestOfferPrice = toNumber(item.bestOfferPrice)
+      const bestBidQuantity = toNumber(item.bestBidQuantity)
+      const bestOfferQuantity = toNumber(item.bestOfferQuantity)
+
+      const lastPrice = toNumber(item.lastPrice)
+      const priceChange = toNumber(item.priceChange)
+      const priceChangePct = toNumber(item.priceChangePct)
+
       const marketPrice =
-        marketPriceRaw > 0
-          ? marketPriceRaw
-          : openingPriceRaw > 0
-            ? openingPriceRaw
-            : bestBidPrice > 0
-              ? bestBidPrice
-              : bestOfferPrice
-      const openingPrice = openingPriceRaw > 0 ? openingPriceRaw : marketPrice
+        lastPrice > 0
+          ? lastPrice
+          : bestBidPrice > 0
+            ? bestBidPrice
+            : bestOfferPrice
+
+      // The snapshot reports the change against the previous close, so the open
+      // is recovered by subtracting it back out.
+      const openingPrice =
+        lastPrice > 0 && priceChange !== 0
+          ? round2(lastPrice - priceChange)
+          : marketPrice
 
       const highRaw = toNumber(item.high)
       const lowRaw = toNumber(item.low)
@@ -195,64 +156,57 @@ function normalizeBaseRows(baseData: BaseMarketItem[]) {
           ? Math.min(lowRaw, openingPrice, marketPrice)
           : Math.min(openingPrice, marketPrice)
 
-      const explicitPct = round2(toNumber(item.percentageChange ?? item.changePercentage))
-      const computedPct = round2(
-        openingPrice > 0 ? ((marketPrice - openingPrice) / openingPrice) * 100 : 0
-      )
-      const percentageChange = explicitPct !== 0 ? explicitPct : computedPct
+      const percentageChange =
+        priceChangePct !== 0
+          ? round2(priceChangePct)
+          : openingPrice > 0
+            ? round2(((marketPrice - openingPrice) / openingPrice) * 100)
+            : 0
 
-      const explicitChange = toNumber(item.change)
       const changeValue =
-        openingPrice > 0 ? round2(marketPrice - openingPrice) : round2(explicitChange)
+        priceChange !== 0
+          ? round2(priceChange)
+          : round2(marketPrice - openingPrice)
 
-      const minLimitRaw = toNumber(item.minLimit)
-      const maxLimitRaw = toNumber(item.maxLimit)
-      const minLimit =
-        minLimitRaw > 0
-          ? minLimitRaw
-          : marketPrice > 0
-            ? Math.round(marketPrice * 0.9)
-            : 0
-      const maxLimit =
-        maxLimitRaw > 0
-          ? maxLimitRaw
-          : marketPrice > 0
-            ? Math.round(marketPrice * 1.1)
-            : 0
+      const minLimit = marketPrice > 0 ? Math.round(marketPrice * 0.9) : 0
+      const maxLimit = marketPrice > 0 ? Math.round(marketPrice * 0.1) + marketPrice : 0
 
-      const lastTradeDate = normalizeTradeDate(item.lastTradeDate ?? item.last_trade_date)
-      const tradeTimeRaw =
-        item.tradeTime ??
-        item.trade_time ??
-        item.lastTradeTime ??
-        item.last_trade_time ??
-        item.time
       const tradeTime =
-        typeof tradeTimeRaw === "string" && tradeTimeRaw.trim().length > 0
-          ? tradeTimeRaw.trim()
+        typeof item.updatedAt === "string" && item.updatedAt.trim().length > 0
+          ? item.updatedAt.trim()
           : null
+      const lastTradeDate = normalizeTradeDate(tradeTime)
+
+      const securityType =
+        typeof item.securityType === "string" && item.securityType.trim().length > 0
+          ? item.securityType.trim()
+          : "EQUITY"
+
+      const topOfBook: SecuritySnapshot = {
+        bestOfferPrice,
+        bestOfferQuantity,
+        bestBidPrice,
+        bestBidQuantity,
+      }
 
       return {
         id,
         company: {
           id,
-          uid: item.company?.uid ?? symbol,
-          name: item.company?.name ?? symbol,
+          uid: symbol,
+          name,
           symbol,
-          securityId: item.company?.securityId ?? symbol,
-          capSize: toNumber(item.company?.capSize),
+          securityId: item.securityId?.trim() || symbol,
+          capSize: 0,
         },
         security: {
-          id: toNumber(item.security?.id ?? id) || id,
-          symbol: item.security?.symbol ?? symbol,
-          securityId: item.security?.securityId ?? symbol,
-          securityType: item.security?.securityType ?? "EQUITY",
-          securityDesc: item.security?.securityDesc ?? symbol,
-          bestOfferPrice,
-          bestOfferQuantity: toNumber(item.bestOfferQuantity ?? item.security?.bestOfferQuantity),
-          bestBidPrice,
-          bestBidQuantity: toNumber(item.bestBidQuantity ?? item.security?.bestBidQuantity),
-          totalSharesIssued: toNumber(item.security?.totalSharesIssued),
+          id,
+          symbol,
+          securityId: item.securityId?.trim() || symbol,
+          securityType,
+          securityDesc: name,
+          ...topOfBook,
+          totalSharesIssued: 0,
         },
         marketPrice,
         openingPrice,
@@ -265,10 +219,7 @@ function normalizeBaseRows(baseData: BaseMarketItem[]) {
         volume: toNumber(item.volume),
         minLimit,
         maxLimit,
-        bestOfferPrice,
-        bestOfferQuantity: toNumber(item.bestOfferQuantity ?? item.security?.bestOfferQuantity),
-        bestBidPrice,
-        bestBidQuantity: toNumber(item.bestBidQuantity ?? item.security?.bestBidQuantity),
+        ...topOfBook,
         lastTradeDate,
         tradeTime,
       }
@@ -278,28 +229,19 @@ function normalizeBaseRows(baseData: BaseMarketItem[]) {
 
 let cachedMarketData: unknown[] | null = null
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url)
-    const isBond = searchParams.get("isBond") === "true"
+    const snapshotResult = await fetchMarketWatchSnapshot(30)
 
-    const baseResult = await fetchJsonWithTimeout<BaseMarketItem[]>(
-      `https://api.dse.co.tz/api/market-data?isBond=${isBond ? "true" : "false"}`,
-      {
-        next: { revalidate: 30 },
-        timeoutMs: 7000,
-      }
-    )
-
-    if (baseResult.ok && Array.isArray(baseResult.data) && baseResult.data.length > 0) {
-      const normalized = normalizeBaseRows(baseResult.data)
+    if (snapshotResult.ok && snapshotResult.data?.code === SNAPSHOT_SUCCESS_CODE) {
+      const normalized = normalizeSnapshotRows(extractSnapshotRows(snapshotResult.data))
       if (normalized.length > 0) {
         cachedMarketData = normalized
         return NextResponse.json(normalized, {
           status: 200,
           headers: {
             "x-dse-stale": "0",
-            "x-dse-source": "market-data",
+            "x-dse-source": "market-watch-snapshot",
           },
         })
       }
